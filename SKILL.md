@@ -3,32 +3,37 @@ name: marathon-training-coach
 description: |
   AI running coach that prevents injuries by monitoring your Strava training load daily.
   Detects dangerous mileage spikes, intensity imbalances, and recovery gaps using evidence-based
-  sports science (80/20 rule, acute:chronic workload ratio), then sends smart alerts to Discord
-  or Slack before problems become injuries.
+  sports science (80/20 rule, acute:chronic workload ratio), then outputs structured JSON
+  for the AI agent to interpret and deliver smart coaching advice.
+
+  Marathon-specific: manages multiple upcoming races, determines your training phase
+  (base/build/peak/taper) on a 16-week plan, assesses race readiness with pace estimates,
+  long run analysis, and taper detection.
 
   Use when:
   - "Am I overtraining?" — Analyze weekly mileage and intensity for injury risk
   - "Check my training load" — Run a daily analysis of your Strava activities
-  - "Send me a training report" — Generate a weekly summary with 4-week trends
+  - "How's my marathon prep going?" — Assess readiness for your next race
+  - "Add a race" — Register an upcoming marathon with target time and training start date
+  - "What phase am I in?" — Determine base/build/peak/taper based on weeks to race
   - "Is my running mileage safe?" — Calculate acute:chronic workload ratio (ACWR)
-  - "Set up automated training alerts" — Schedule daily checks via cron
+  - "Generate a weekly report" — 4-week trends, ACWR, intensity distribution
   - Monitoring heart rate to ensure easy days are actually easy (80/20 compliance)
   - Tracking recovery gaps and consistency streaks
-  - Optional Oura ring integration for sleep and readiness scores
+  - Estimating marathon finish time from recent Z3/Z4 paces
 
-  Unlike basic Strava data skills, this coach actively monitors your patterns daily and alerts
-  you before problems become injuries — backed by research from Seiler (2010), Gabbett (2016),
-  and Stoggl & Sperlich (2014).
+  Scripts output structured JSON for the AI agent to interpret. The agent reads the JSON
+  and provides personalized, conversational coaching advice to the runner.
 
-  Security: No hardcoded secrets, input validation, log redaction, webhook URL validation,
-  secure token storage (XDG, 0600 permissions), rate limiting, 30s request timeouts.
+  Security: No hardcoded secrets, input validation, log redaction, secure token storage
+  (XDG, 0600 permissions), rate limiting, 30s request timeouts, activity caching.
 homepage: https://developers.strava.com/docs/reference/
-metadata: {"clawdbot":{"emoji":"🏃","tags":["fitness","strava","running","injury-prevention","training","alerts","discord","slack","telegram","health","marathon","overtraining","recovery","80-20-rule","heart-rate","coaching","endurance"],"requires":{"env":["STRAVA_CLIENT_ID","STRAVA_CLIENT_SECRET","DISCORD_WEBHOOK_URL or SLACK_WEBHOOK_URL or TELEGRAM_BOT_TOKEN+TELEGRAM_CHAT_ID"]}}}
+metadata: {"clawdbot":{"emoji":"🏃","tags":["fitness","strava","running","injury-prevention","training","alerts","discord","slack","telegram","health","marathon","overtraining","recovery","80-20-rule","heart-rate","coaching","endurance","race-readiness","taper","ACWR"],"requires":{"env":["STRAVA_CLIENT_ID","STRAVA_CLIENT_SECRET"]}}}
 ---
 
 # Marathon Training Coach
 
-Evidence-based AI training partner that catches injury risk before you feel it.
+Evidence-based AI training partner that catches injury risk before you feel it — and coaches you through marathon prep.
 
 ## Why This Matters
 
@@ -40,12 +45,33 @@ Built on the **80/20 polarized training model** (Seiler, 2010; Stoggl & Sperlich
 
 ## What You Get
 
+### Daily Monitoring (`coach_check.py`)
 - **ACWR Monitoring** — Tracks your acute:chronic workload ratio (Gabbett, 2016). ACWR > 1.5 = high injury risk
 - **Acute Load Alerts** — Weekly mileage up 30%+? You'll know before your knees do
-- **80/20 Intensity Checks** — Too many hard days eroding recovery? Get evidence-based recommendations
+- **80/20 Intensity Checks** — VT1-anchored HR zones detect too many hard days
 - **Recovery Nudges** — Extended gaps that might affect your training adaptations
-- **Weekly Reports** — Sunday summaries with 4-week trends, ACWR, and intensity distribution
-- **Oura Integration** — Optional sleep/readiness scores to inform training decisions
+- **Consistency Streaks** — Milestone celebrations at 7, 14, 30, 60, 100 days
+- **Marathon Phase Alignment** — Warns if your training doesn't match your current phase (e.g., not tapering when you should be)
+
+### Weekly Reports (`weekly_report.py`)
+- 4-week volume trends with week-over-week comparisons
+- ACWR with risk zone classification (undertraining / sweet spot / caution / high risk)
+- Intensity distribution (easy/hard split) vs 80/20 target with zone breakdown
+- Marathon countdown with phase and plan week
+
+### Marathon Race Management (`marathon_config.py`)
+- Store multiple upcoming races with target times, distances, and training start dates
+- CLI commands: `set`, `get`, `list`, `remove`
+- Target pace calculation from finish time
+- Training week tracking (weeks into plan, weeks remaining)
+
+### Race Readiness Assessment (`marathon_status.py`)
+- **Training Phase** — Auto-detects base/build/peak/taper on a 16-week plan
+- **Long Run Analysis** — Tracks all long runs (15km+), top 5 by distance, recent frequency
+- **Weekly Volume Trends** — 4-week breakdown with averages
+- **Race Pace Estimation** — Extrapolates marathon finish from Z3 pace and Z4 threshold pace (Daniels formula)
+- **Taper Detection** — Identifies declining volume patterns
+- **Phase-Specific Recommendations** — Actionable advice for the current training week
 
 ## Quick Start
 
@@ -56,59 +82,61 @@ Built on the **80/20 polarized training model** (Seiler, 2010; Stoggl & Sperlich
 export STRAVA_CLIENT_ID=your_id
 export STRAVA_CLIENT_SECRET=your_secret
 
+# Or use a .env file (see .env.example)
+
 # Authenticate (opens browser for OAuth)
 python3 scripts/auth.py
 ```
 
 Tokens are stored in `~/.config/marathon-training-coach/strava_tokens.json` with 0600 permissions.
 
-### 2. Set Up Notifications (Required)
+### 2. Add a Race
 
-**Discord:**
 ```bash
-export DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/...
-export NOTIFICATION_CHANNEL=discord
+# Register your marathon
+python3 scripts/marathon_config.py set \
+  --race-name "Taipei Marathon" \
+  --race-date 2026-10-18 \
+  --target-time 3:30:00 \
+  --start-date 2026-06-28
+
+# Add another race
+python3 scripts/marathon_config.py set \
+  --race-name "Fuji Marathon" \
+  --race-date 2026-12-06 \
+  --target-time 3:25:00
+
+# List all races
+python3 scripts/marathon_config.py list
+
+# Check next upcoming race
+python3 scripts/marathon_config.py get --next
 ```
 
-**Slack:**
-```bash
-export SLACK_WEBHOOK_URL=https://hooks.slack.com/...
-export NOTIFICATION_CHANNEL=slack
-```
+Race configs stored in `~/.config/marathon-training-coach/marathons.json`.
 
-**Telegram:**
-```bash
-export TELEGRAM_BOT_TOKEN=123456789:ABCdefGHI...
-export TELEGRAM_CHAT_ID=your_chat_id
-export NOTIFICATION_CHANNEL=telegram
-```
-
-To get your Telegram bot token and chat ID:
-1. Message [@BotFather](https://t.me/BotFather) on Telegram, send `/newbot`, follow prompts to get your bot token
-2. Start a chat with your new bot (send it `/start`)
-3. To get your chat ID, visit `https://api.telegram.org/bot<YOUR_TOKEN>/getUpdates` in a browser after messaging the bot
-
-⚠️ **Security:** All credentials must be set via environment variables or `.env` file. No hardcoded secrets.
-
-### 3. Optional: Enable Oura Integration
+### 3. Run
 
 ```bash
-export OURA_ENABLED=true
-```
-
-Requires Oura CLI authentication.
-
-### 4. Run
-
-```bash
-# Daily training check + alerts
+# Daily training check (outputs JSON with alerts)
 python3 scripts/coach_check.py
 
-# Weekly summary report  
+# Weekly summary report (outputs JSON with trends)
 python3 scripts/weekly_report.py
+
+# Marathon readiness assessment
+python3 scripts/marathon_status.py
+
+# Machine-readable JSON output
+python3 scripts/marathon_status.py --json
+
+# Assess a specific race
+python3 scripts/marathon_status.py --race-name "Fuji Marathon"
 ```
 
-Optional: schedule with cron for hands-off monitoring:
+All scripts output structured JSON for the AI agent to interpret and deliver coaching advice.
+
+### 4. Optional: Schedule with Cron
 
 ```json
 {
@@ -118,26 +146,56 @@ Optional: schedule with cron for hands-off monitoring:
 }
 ```
 
+## Configuration
+
+All thresholds are optional — sensible defaults with validation. Set via environment variables or `.env` file.
+
+```bash
+# Strava (required)
+STRAVA_CLIENT_ID=your_id
+STRAVA_CLIENT_SECRET=your_secret
+
+# HR configuration (used for zone calculations)
+MAX_HEART_RATE=190              # 140-230, default: 190
+VT1_HEART_RATE=142              # 100-230, default: 75% of max HR
+
+# Training thresholds (validated ranges)
+MAX_WEEKLY_MILEAGE_JUMP=30      # 5-100%, default: 30
+MAX_HARD_DAY_PERCENTAGE=25      # 5-100%, default: 25
+PLANNED_REST_DAYS=2             # 0-7, default: 2
+
+# Debug logging
+VERBOSE=false
+```
+
+### HR Zones (VT1-Anchored 5-Zone Model)
+
+| Zone | Range | Description |
+|------|-------|-------------|
+| Z1 | < 65% max HR | Recovery |
+| Z2 | 65% max HR to VT1 | Aerobic |
+| Z3 | VT1 to VT1 + 38% remaining | Tempo / Marathon Pace |
+| Z4 | VT1 + 38% to VT1 + 77% remaining | Threshold |
+| Z5 | > VT1 + 77% remaining | VO2max / Max |
+
 ## Security Features
 
-This skill is designed with security in mind for ClawHub publication:
-
 ### Credential Handling
-- **No hardcoded secrets** — All credentials via environment variables
+- **No hardcoded secrets** — All credentials via environment variables or `.env`
 - **Secure token storage** — Tokens saved with 0600 permissions
 - **XDG compliance** — Config stored in `~/.config/marathon-training-coach/`
-- **Token validation** — Structure validation before use
+- **Token auto-refresh** — Expired tokens refreshed automatically via Strava OAuth
 
 ### Input Validation
-- **Date format validation** — ISO8601 format checking
-- **Numeric range validation** — All thresholds bounded
-- **Type checking** — Safe type conversion with defaults
-- **Webhook URL validation** — Pattern matching for Discord/Slack
+- **Date format validation** — ISO8601 / YYYY-MM-DD checking
+- **Numeric range validation** — All thresholds bounded (min/max)
+- **Activity validation** — API responses validated before processing
+- **Time format validation** — H:MM:SS format for target times
 
 ### Data Protection
-- **Log redaction** — Sensitive data masked in logs
-- **Secure temp files** — Proper permissions on state files
-- **No data leakage** — Safe error messages
+- **Log redaction** — Sensitive data (tokens, webhooks) masked in logs
+- **Secure temp files** — Proper permissions on state and cache files
+- **Activity caching** — Local cache with deduplication reduces API calls
 - **Rate limiting** — Max 1 alert per hour per type
 
 ### Network Security
@@ -146,42 +204,69 @@ This skill is designed with security in mind for ClawHub publication:
 - **Retry logic** — 3 attempts with exponential backoff
 - **Certificate validation** — Standard SSL verification
 
-## Configuration
+## Example Output
 
-All thresholds are optional — sensible defaults with validation.
+### coach_check.py (Daily)
 
-```bash
-# Training thresholds (validated ranges)
-MAX_WEEKLY_MILEAGE_JUMP=30     # 5-100%, default: 30
-MAX_HARD_DAY_PERCENTAGE=25     # 5-100%, default: 25
-MIN_EASY_RUN_HEART_RATE=145    # 100-200 bpm, default: 145
-
-# Feature flags
-OURA_ENABLED=false             # Enable Oura integration
-VERBOSE=false                  # Enable debug logging
+```json
+{
+  "weekly_km": 42.3,
+  "acwr": 1.15,
+  "alerts": [
+    {
+      "type": "load_spike",
+      "severity": "medium",
+      "message": "Weekly mileage up 35% (31.3 -> 42.3 km). ACWR: 1.15.",
+      "recommendation": "Consider an easy week or cut next week's mileage by 20%."
+    },
+    {
+      "type": "marathon_alignment",
+      "severity": "medium",
+      "message": "Taipei Marathon is 85 days away (Peak phase). No long run (>= 15km) in last 2 weeks.",
+      "recommendation": "Schedule a long run this weekend with the last portion at marathon pace (Z3)."
+    }
+  ],
+  "checks_run": ["load", "intensity", "recovery", "streak", "marathon"]
+}
 ```
 
-## Example Alerts
+### marathon_status.py (Race Readiness)
 
-### Injury Risk
-
-> "Weekly mileage up 45% (18 -> 26 mi). ACWR: 1.62. Nielsen et al. (2014) found >30% weekly increases significantly raise injury risk. Your acute:chronic workload ratio is in the high-risk zone (>1.5). Reduce next week's volume by 20-30%."
-
-> "60% of runs were moderate/high effort (HR >145). Seiler (2010) found elite athletes keep ~80% of sessions below VT1. Polarized training produces better VO2max gains than moderate-intensity training (Stoggl & Sperlich, 2014)."
-
-> "5 days since last activity. Mujika & Padilla (2000) found VO2max begins declining after ~10 days of inactivity. A gentle 20-min walk or easy jog can maintain adaptations."
-
-### Achievements
-
-> "30-Day Streak! Consistency beats intensity. Holloszy & Coyle (1984) showed mitochondrial density increases with repeated aerobic stimulus."
-
-### Weekly Reports (Sunday)
-
-- Weekly mileage with week-over-week change %
-- Acute:Chronic Workload Ratio (ACWR) with risk zone
-- Intensity distribution (easy/moderate/hard) vs. 80/20 target
-- 4-week trend visualization
-- Evidence-based recommendations for next week
+```json
+{
+  "race": {
+    "name": "Taipei Marathon",
+    "date": "2026-10-18",
+    "target_time": "3:30:00",
+    "target_pace": "4:58/km",
+    "days_to_race": 85,
+    "weeks_to_race": 12.1
+  },
+  "training_phase": {
+    "phase": "build",
+    "label": "Build",
+    "plan_week": 5,
+    "description": "Threshold work + race simulations, long run progression"
+  },
+  "long_run_analysis": {
+    "total_long_runs": 6,
+    "recent_long_runs": 2,
+    "longest": {"distance_km": 25.3, "duration_min": 145, "pace_min_km": "5:44"}
+  },
+  "race_pace_readiness": {
+    "marathon_pace_estimate": {
+      "pace_min_km": "5:02",
+      "estimated_finish_time": "3:33:15",
+      "based_on_runs": 4
+    }
+  },
+  "taper_detection": {"is_tapering": false},
+  "recommendations": [
+    "Add threshold (Z4) sessions and race simulations.",
+    "Pace is close: Z3 pace projects 3:33:15 vs 3:30:00 target."
+  ]
+}
+```
 
 ## Training Philosophy (Evidence-Based)
 
@@ -196,22 +281,15 @@ See `references/training-principles.md` for the full guide with 30+ scientific r
 ## Files
 
 - `scripts/auth.py` — Strava OAuth setup (tokens stored in XDG config dir)
-- `scripts/coach_check.py` — Daily training analysis and alerts (security-hardened)
-- `scripts/weekly_report.py` — Sunday summary reports (security-hardened)
+- `scripts/utils.py` — Shared utilities: HR zones, Strava API, activity caching, marathon config, training phases
+- `scripts/coach_check.py` — Daily training analysis: load spikes, 80/20, recovery, streaks, marathon alignment
+- `scripts/weekly_report.py` — Weekly summary: 4-week trends, ACWR, intensity distribution, marathon countdown
+- `scripts/marathon_config.py` — CLI to manage upcoming races (set/get/list/remove)
+- `scripts/marathon_status.py` — Race readiness assessment: phase, long runs, pace estimates, taper detection
 - `references/training-principles.md` — Evidence-based injury prevention guide
-
-## Smart, Not Spammy
-
-Alerts fire only when something matters:
-- Mileage spike detected
-- Intensity pattern concerning
-- Meaningful PR achieved
-- Weekly summary ready
-
-Not every workout. That's what Strava is for.
 
 ## Rate Limits
 
-- 1-2 API calls per check
 - Strava allows 100 req/15 min, 1000/day
-- Daily checks use ~30 requests/month
+- Activity caching minimizes API calls (only fetches new activities since last cache)
+- Daily checks use ~1-2 API calls per run
