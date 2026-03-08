@@ -27,7 +27,7 @@ from utils import (
     calculate_ctl_atl_tsb,
     setup_logging,
     load_tokens, fetch_activities,
-    get_next_marathon, get_training_phase,
+    get_next_marathon, get_training_phase, get_marathon_report_info,
 )
 
 # ============================================================================
@@ -443,23 +443,68 @@ def main() -> int:
     if marathon_alert and state.should_alert('marathon'):
         alerts.append(marathon_alert)
 
-    # TSB fatigue check
+    # TSB fatigue check (phase-aware)
     training_stress = calculate_ctl_atl_tsb(activities)
-    if training_stress['tsb'] is not None and training_stress['tsb'] < -20:
-        tsb_alert = {
-            'type': 'deep_fatigue',
-            'severity': 'high',
-            'message': (
-                f"TSB is {training_stress['tsb']:.1f} (deep fatigue zone). "
-                f"CTL: {training_stress['ctl']:.1f}, ATL: {training_stress['atl']:.1f}. "
-                f"Training stress is significantly outpacing fitness adaptation."
-            ),
-            'recommendation': (
-                "Consider a recovery week: reduce volume by 40-50%, skip Z4/Z5 sessions, "
-                "and prioritize sleep. TSB should return above -10 before resuming hard training."
-            ),
-        }
-        if state.should_alert('fatigue'):
+    if training_stress['tsb'] is not None:
+        tsb = training_stress['tsb']
+        marathon_info = get_marathon_report_info()
+        phase = marathon_info.get('phase', 'pre_training') if marathon_info else 'pre_training'
+
+        # Phase-aware thresholds and recommendations
+        tsb_alert = None
+        if phase in ('peak', 'build'):
+            # Negative TSB is expected during build/peak — only alert at extremes
+            if tsb < -40:
+                tsb_alert = {
+                    'type': 'deep_fatigue',
+                    'severity': 'medium',
+                    'message': (
+                        f"TSB is {tsb:.1f} during {phase} phase. "
+                        f"CTL: {training_stress['ctl']:.1f}, ATL: {training_stress['atl']:.1f}. "
+                        f"Negative TSB is normal during {phase}, but this is on the extreme end."
+                    ),
+                    'recommendation': (
+                        f"You're in {phase} phase — some fatigue is expected and productive. "
+                        "Monitor how you feel: sleep quality, motivation, persistent soreness. "
+                        "If a recovery week is scheduled soon, trust the plan. "
+                        "If not, consider making the next easy day truly easy (Z1 only)."
+                    ),
+                }
+        elif phase == 'taper':
+            # TSB should be rising during taper
+            if tsb < -10:
+                tsb_alert = {
+                    'type': 'deep_fatigue',
+                    'severity': 'high',
+                    'message': (
+                        f"TSB is {tsb:.1f} during taper phase. "
+                        f"CTL: {training_stress['ctl']:.1f}, ATL: {training_stress['atl']:.1f}. "
+                        f"TSB should be rising toward race day (target: +5 to +15)."
+                    ),
+                    'recommendation': (
+                        "You're tapering but fatigue isn't dropping. Cut volume more aggressively "
+                        "and keep all runs at Z1-Z2. Prioritize sleep. "
+                        "TSB needs to reach +5 to +15 by race day for optimal performance."
+                    ),
+                }
+        else:
+            # Base or pre-training — standard threshold
+            if tsb < -20:
+                tsb_alert = {
+                    'type': 'deep_fatigue',
+                    'severity': 'high',
+                    'message': (
+                        f"TSB is {tsb:.1f} (deep fatigue zone). "
+                        f"CTL: {training_stress['ctl']:.1f}, ATL: {training_stress['atl']:.1f}. "
+                        f"Training stress is significantly outpacing fitness adaptation."
+                    ),
+                    'recommendation': (
+                        "Consider a recovery week: reduce volume by 40-50%, skip Z4/Z5 sessions, "
+                        "and prioritize sleep. TSB should return above -10 before resuming hard training."
+                    ),
+                }
+
+        if tsb_alert and state.should_alert('fatigue'):
             alerts.append(tsb_alert)
 
     acwr = calculate_acwr(activities)

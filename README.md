@@ -126,7 +126,17 @@ All zone calculations are anchored to your VT1, not generic percentages:
 | **TSS** (Training Stress Score) | How hard a session was, combining duration and intensity | 100 = a solid 1hr effort at VT1. A 2hr easy run might be 80-120. A hard tempo might be 150+. |
 | **CTL** (Chronic Training Load) | 42-day rolling average of daily TSS — your "fitness" | Higher = more fit. Typical range: 30-80 for recreational marathoners. |
 | **ATL** (Acute Training Load) | 7-day rolling average of daily TSS — your "fatigue" | Higher = more recent stress. Spikes during hard training weeks. |
-| **TSB** (Training Stress Balance) | CTL minus ATL — your "freshness" | **Positive** = fresh and rested. **-10 to -20** = normal training fatigue. **Below -20** = deep fatigue, injury risk rises. **Race day target: +5 to +15** (fresh but fit). |
+| **TSB** (Training Stress Balance) | CTL minus ATL — your "freshness" | Depends on training phase — see table below. **Race day target: +5 to +15** (fresh but fit). |
+
+**TSB by training phase** — negative TSB is normal and expected during hard training:
+
+| Phase | Expected TSB | Meaning |
+|-------|-------------|---------|
+| Base | -5 to -15 | Moderate fatigue from building volume |
+| Build | -15 to -30 | Higher fatigue as intensity increases — normal |
+| Peak | -20 to -40 | Highest fatigue of the cycle — necessary for adaptation |
+| Taper | Rising toward +5 to +15 | Fatigue dropping, freshness building |
+| Race day | +5 to +15 | Fresh but fit — the goal |
 
 ### ACWR (Acute:Chronic Workload Ratio)
 
@@ -161,7 +171,7 @@ The marathon status report scores you on four dimensions:
 | **Load spike** | medium/high | Weekly km up 30%+ | Easy week next week, cut volume 20% |
 | **Intensity imbalance** | medium | Hard runs > 25% of total | More easy days, slow down recovery runs |
 | **Recovery gap** | low | 5+ days since last activity | Easy jog or walk to maintain adaptations |
-| **Deep fatigue** | high | TSB below -20 | Recovery week: -40-50% volume, no hard sessions |
+| **Deep fatigue** | medium-high | TSB extremely negative for current phase (phase-aware thresholds) | Depends on phase: during peak, monitor feel and ensure recovery weeks are planned; during base/taper, reduce volume |
 | **Marathon alignment** | medium | Training doesn't match phase (e.g., not tapering in taper phase, no long runs in peak phase) | Follow phase-specific guidance |
 | **Streak milestone** | positive | 7/14/30/60/100 day streak | Celebration! Consistency is king |
 

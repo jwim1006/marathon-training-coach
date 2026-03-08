@@ -73,6 +73,34 @@ Built on the **80/20 polarized training model** (Seiler, 2010; Stoggl & Sperlich
 - **Taper Detection** — Identifies declining volume patterns
 - **Phase-Specific Recommendations** — Actionable advice for the current training week
 
+## Interpreting Script Output
+
+**CRITICAL: Always read the JSON values directly. Never recalculate metrics yourself — use the exact numbers from the script output.**
+
+### TSB in Context of Training Phase
+
+TSB (Training Stress Balance) must be interpreted relative to the training phase. Negative TSB is not always bad:
+
+| Phase | Expected TSB | What It Means |
+|-------|-------------|---------------|
+| **Base** | -5 to -15 | Moderate fatigue from building volume |
+| **Build** | -15 to -30 | Higher fatigue as intensity increases — normal and productive |
+| **Peak** | -20 to -40 | Highest fatigue of the cycle — this is expected and necessary |
+| **Taper** | Rising toward +5 to +15 | Fatigue should be dropping as volume decreases |
+| **Race day** | +5 to +15 | Fresh but fit — the goal of tapering |
+
+**Do NOT tell an athlete in peak phase to cut volume 40-50% just because TSB is negative.** During peak, negative TSB means training is working. Only recommend backing off if:
+- TSB is extreme (below -40 in peak, below -20 in base)
+- The athlete reports feeling terrible (sleep issues, persistent soreness, no motivation)
+- ACWR is also in the high-risk zone (> 1.5)
+- It has been more than 3 weeks since the last recovery week
+
+The alerts from `coach_check.py` are already phase-aware — present them as-is without adding your own interpretation.
+
+### Race Pace Estimates
+
+The script provides `estimated_finish_time` — use this value directly. Do not recalculate from pace values.
+
 ## Athlete Setup
 
 At the start of every session, check if the athlete is configured:
