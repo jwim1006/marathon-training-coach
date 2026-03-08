@@ -75,3 +75,62 @@
 | 3.1 marathon_config.py | Done |
 | 3.2 marathon_status.py | Done |
 | 3.3 Integration with existing scripts | Done |
+
+## Phase 4: Enrich with Endurance Coach Ideas
+
+### 4.1 Agent Guidance (Reference Docs + SKILL.md)
+
+#### 4.1F SKILL.md Restructure
+- Add progressive discovery pattern (lean SKILL.md + reference file index)
+- Add reference file table with "when to read" guidance
+- Add plan personalization workflow
+- Keep SKILL.md under ~3k tokens
+
+#### 4.1A Athlete Context Persistence
+- Create `references/athlete-context-template.md` with profile structure
+- Add decision tree to SKILL.md: check for athlete_context.md, read or build
+- Foundation vs Form guidance for progression rates
+
+#### 4.1B Post-Workout Interview Protocol
+- Add 5 baseline questions and interview workflow to SKILL.md
+- Add subjective monitoring section to `references/training-principles.md` (RPE, wellness scales)
+- Workout notes stored in `~/.config/marathon-training-coach/workout_notes.json`
+
+#### 4.1C Race Day Execution Guide
+- Create `references/race-day-execution.md` with pacing, nutrition, hydration, caffeine
+- Add SKILL.md trigger: "within 7 days of race, read race-day-execution.md"
+
+#### 4.1D Periodization Reference
+- Create `references/periodization.md` with loading patterns, recovery weeks, adaptation timelines
+
+#### 4.1E Training Plan Library
+- Move `references/marathon-plan.md` to `references/plans/sub3-16week.md`
+- Create `references/plans/README.md` (index)
+- Create `references/plans/beginner-16week.md`
+- Create `references/plans/sub330-16week.md`
+- Create `references/plans/sub4-16week.md`
+
+### 4.2 New Analysis Scripts
+
+#### 4.2A TSS / CTL / ATL / TSB
+- Add `calculate_hr_tss()` and `calculate_ctl_atl_tsb()` to `scripts/utils.py`
+- Add TSS/CTL/ATL/TSB to `scripts/weekly_report.py` JSON output
+- Add TSB fatigue alert (TSB < -20) to `scripts/coach_check.py`
+
+#### 4.2B Strengths/Limiters Analysis
+- Add `analyze_strengths_limiters()` to `scripts/marathon_status.py`
+- Scoring: endurance, speed, volume consistency, recovery discipline
+- Output: `"strengths_limiters": {"strengths": [...], "limiters": [...]}`
+
+### Phase 4 Status
+
+| Task | Status |
+|------|--------|
+| 4.1F SKILL.md restructure | Done |
+| 4.1A Athlete context persistence | Done |
+| 4.1B Post-workout interview protocol | Done |
+| 4.1C Race day execution guide | Done |
+| 4.1D Periodization reference | Done |
+| 4.1E Training plan library | Done |
+| 4.2A TSS/CTL/ATL/TSB | Done |
+| 4.2B Strengths/limiters analysis | Done |

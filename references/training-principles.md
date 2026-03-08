@@ -189,6 +189,42 @@ If your long run is >30% of weekly miles, you're not running enough during the w
 
 **The science:** Brick et al. (2014) found that trained runners who used motivational self-talk and attentional focus strategies during time-trial runs improved performance by 2-3% compared to control conditions.
 
+## Subjective Monitoring
+
+### RPE (Rate of Perceived Exertion) Scale
+
+Use RPE alongside HR data for a complete picture of training load.
+
+| RPE | Description | Equivalent |
+|-----|-------------|------------|
+| 1-2 | Very light, barely moving | Walking, Z1 recovery |
+| 3-4 | Light, conversational | Easy run, Z2 |
+| 5-6 | Moderate, can speak in short sentences | Tempo, Z3 |
+| 7-8 | Hard, only a few words at a time | Threshold, Z4 |
+| 9 | Very hard, cannot speak | VO2max, Z5 |
+| 10 | Maximum effort | Sprint, race finish kick |
+
+### Wellness Monitoring (1-5 Scales)
+
+Track these daily to detect early signs of overtraining:
+
+| Category | 1 (Poor) | 3 (Average) | 5 (Excellent) |
+|----------|----------|-------------|---------------|
+| **Sleep** | < 5hrs, broken | 6-7hrs, some waking | 8+ hrs, deep |
+| **Energy** | Exhausted, no motivation | Normal | Energized, eager |
+| **Soreness** | Can't run normally | Minor tightness | Fresh |
+| **Mood** | Irritable, anxious | Neutral | Positive, focused |
+| **Appetite** | No appetite or excessive | Normal | Healthy, satisfied |
+
+### Warning Patterns
+
+- **2+ categories scoring 1-2 for 3+ consecutive days** = Back off training. Reduce volume 30-50% for the rest of the week.
+- **Sleep consistently < 6hrs** = Reduce intensity (no Z4/Z5 work) until sleep improves.
+- **Persistent soreness (score 1-2) for 5+ days** = Take 2-3 complete rest days.
+- **Mood + energy both low for a week** = Possible non-functional overreaching. Consider a full recovery week.
+
+**The science:** Foster et al. (2001) demonstrated that session RPE (overall workout difficulty x duration) correlates strongly with HR-based training load measures. Subjective monitoring catches early overtraining signals that HR alone misses — particularly psychological and immune-related markers (Meeusen et al., 2013).
+
 ## References
 
 ### Primary Sources

@@ -24,6 +24,7 @@ from utils import (
     VT1_HR,
     get_hr_zone, is_easy_hr,
     safe_float, safe_int,
+    calculate_ctl_atl_tsb,
     setup_logging,
     load_tokens, fetch_activities,
     get_next_marathon, get_training_phase,
@@ -442,11 +443,31 @@ def main() -> int:
     if marathon_alert and state.should_alert('marathon'):
         alerts.append(marathon_alert)
 
+    # TSB fatigue check
+    training_stress = calculate_ctl_atl_tsb(activities)
+    if training_stress['tsb'] is not None and training_stress['tsb'] < -20:
+        tsb_alert = {
+            'type': 'deep_fatigue',
+            'severity': 'high',
+            'message': (
+                f"TSB is {training_stress['tsb']:.1f} (deep fatigue zone). "
+                f"CTL: {training_stress['ctl']:.1f}, ATL: {training_stress['atl']:.1f}. "
+                f"Training stress is significantly outpacing fitness adaptation."
+            ),
+            'recommendation': (
+                "Consider a recovery week: reduce volume by 40-50%, skip Z4/Z5 sessions, "
+                "and prioritize sleep. TSB should return above -10 before resuming hard training."
+            ),
+        }
+        if state.should_alert('fatigue'):
+            alerts.append(tsb_alert)
+
     acwr = calculate_acwr(activities)
 
     result = {
         'weekly_km': round(weekly_km, 1),
         'acwr': round(acwr, 2) if acwr else None,
+        'training_stress': training_stress,
         'alerts': alerts,
         'checks_run': ['load', 'intensity', 'recovery', 'streak', 'marathon'],
         'generated_at': datetime.now(timezone.utc).isoformat(),

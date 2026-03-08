@@ -35,6 +35,8 @@ CONFIG_DIR = get_config_dir()
 TOKEN_FILE = os.path.join(CONFIG_DIR, 'strava_tokens.json')
 MARATHONS_FILE = os.path.join(CONFIG_DIR, 'marathons.json')
 ACTIVITIES_CACHE_FILE = os.path.join(CONFIG_DIR, 'activities_cache.json')
+WORKOUT_NOTES_FILE = os.path.join(CONFIG_DIR, 'workout_notes.json')
+ATHLETE_CONFIG_FILE = os.path.join(CONFIG_DIR, 'athlete_config.json')
 
 os.makedirs(CONFIG_DIR, mode=0o700, exist_ok=True)
 
@@ -58,8 +60,23 @@ def get_env_int(name: str, default: int, min_val: int, max_val: int) -> int:
 VERBOSE = os.environ.get('VERBOSE', '').lower() in ('true', '1', 'yes')
 
 # HR config
-MAX_HR = get_env_int('MAX_HEART_RATE', 190, 140, 230)
-VT1_HR = get_env_int('VT1_HEART_RATE', int(MAX_HR * 0.75), 100, 230)
+def _load_hr_config():
+    """Load HR config from athlete_config.json, falling back to env vars."""
+    try:
+        with open(os.path.join(get_config_dir(), 'athlete_config.json'), 'r') as f:
+            data = json.load(f)
+            if isinstance(data, dict) and 'max_hr' in data and 'vt1_hr' in data:
+                max_hr = max(140, min(230, int(data['max_hr'])))
+                vt1_hr = max(100, min(230, int(data['vt1_hr'])))
+                return max_hr, vt1_hr
+    except (FileNotFoundError, json.JSONDecodeError, ValueError, TypeError):
+        pass
+    # Fallback to env vars
+    max_hr = get_env_int('MAX_HEART_RATE', 190, 140, 230)
+    vt1_hr = get_env_int('VT1_HEART_RATE', int(max_hr * 0.75), 100, 230)
+    return max_hr, vt1_hr
+
+MAX_HR, VT1_HR = _load_hr_config()
 
 # ============================================================================
 # HR ZONES (VT1-anchored 5-zone model)
@@ -377,6 +394,74 @@ def fetch_activities(access_token: str, logger: logging.Logger, days: int = 28) 
     filtered.sort(key=lambda a: a.get('start_date', ''), reverse=True)
     logger.debug(f"Returning {len(filtered)} activities (cache: {len(all_activities)} total)")
     return filtered
+
+# ============================================================================
+# TSS / CTL / ATL / TSB (Training Stress Metrics)
+# ============================================================================
+
+def calculate_hr_tss(duration_sec: float, avg_hr: float) -> float:
+    """Calculate heart rate-based Training Stress Score.
+    Formula: (duration_min / 60) * (avg_hr / VT1_HR)^2 * 100
+    Approximates TSS using HR intensity relative to VT1."""
+    if duration_sec <= 0 or avg_hr <= 0 or VT1_HR <= 0:
+        return 0.0
+    duration_min = duration_sec / 60.0
+    intensity_factor = avg_hr / VT1_HR
+    return (duration_min / 60.0) * (intensity_factor ** 2) * 100
+
+
+def calculate_ctl_atl_tsb(activities: List[Dict]) -> Dict[str, Optional[float]]:
+    """Calculate Chronic Training Load (42-day), Acute Training Load (7-day), and TSB.
+    CTL = exponentially weighted average of daily TSS over 42 days (fitness).
+    ATL = exponentially weighted average of daily TSS over 7 days (fatigue).
+    TSB = CTL - ATL (form / freshness)."""
+    if not activities:
+        return {'ctl': None, 'atl': None, 'tsb': None}
+
+    now = datetime.now(timezone.utc)
+    # Build daily TSS array for last 42 days
+    daily_tss = [0.0] * 42
+    for a in activities:
+        try:
+            act_date = datetime.fromisoformat(a.get('start_date', '').replace('Z', '+00:00'))
+            days_ago = (now - act_date).days
+            if 0 <= days_ago < 42:
+                duration_sec = safe_float(a.get('moving_time'), 0)
+                avg_hr = safe_float(a.get('average_heartrate'), 0)
+                if duration_sec > 0 and avg_hr > 0:
+                    daily_tss[days_ago] += calculate_hr_tss(duration_sec, avg_hr)
+        except (ValueError, TypeError):
+            continue
+
+    # Exponentially weighted moving averages
+    ctl = 0.0  # 42-day time constant
+    atl = 0.0  # 7-day time constant
+    # Process from oldest to newest
+    for i in range(41, -1, -1):
+        ctl = ctl + (daily_tss[i] - ctl) * (1.0 / 42.0)
+        atl = atl + (daily_tss[i] - atl) * (1.0 / 7.0)
+
+    tsb = ctl - atl
+    return {
+        'ctl': round(ctl, 1),
+        'atl': round(atl, 1),
+        'tsb': round(tsb, 1),
+    }
+
+# ============================================================================
+# ATHLETE CONFIG
+# ============================================================================
+
+def load_athlete_config() -> Dict:
+    """Load athlete config. Returns dict with at least max_hr and vt1_hr."""
+    try:
+        with open(ATHLETE_CONFIG_FILE, 'r') as f:
+            data = json.load(f)
+            if isinstance(data, dict) and 'max_hr' in data and 'vt1_hr' in data:
+                return data
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+    return {}
 
 # ============================================================================
 # MARATHON CONFIG

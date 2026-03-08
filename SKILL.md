@@ -73,6 +73,62 @@ Built on the **80/20 polarized training model** (Seiler, 2010; Stoggl & Sperlich
 - **Taper Detection** — Identifies declining volume patterns
 - **Phase-Specific Recommendations** — Actionable advice for the current training week
 
+## Athlete Setup
+
+At the start of every session, check if the athlete is configured:
+
+### Step 1: Athlete Config (Required)
+```bash
+python3 scripts/athlete_config.py get
+```
+- If empty, **prompt the user** for max HR and VT1 HR — these are required for all analysis:
+  ```bash
+  python3 scripts/athlete_config.py set --max-hr 201 --vt1-hr 175
+  ```
+- Optionally collect more: `--years-running`, `--peak-weekly-km`, `--long-run-day`, `--rest-days`, `--hours-per-week`, `--race-prs`, `--injury-history`
+- All zone calculations, TSS, and 80/20 checks depend on these HR values being correct.
+
+### Step 2: Athlete Context (Coaching Profile)
+Check: does `~/.config/marathon-training-coach/athlete_context.md` exist?
+- **YES** → Read it, use as primary coaching context. Don't re-run scripts unnecessarily.
+- **NO** → Build it conversationally:
+  1. Run `coach_check.py`, `weekly_report.py`, `marathon_status.py --json` to gather data
+  2. Ask about foundation, goals, schedule, coaching preferences
+  3. Write the file using the template in `references/athlete-context-template.md`
+  4. Update at milestones — don't regenerate from scratch
+
+This file replaces re-running all scripts every session. One 2-3k token file provides full coaching context.
+
+## Post-Workout Check-In
+
+When the athlete tells you about a workout (e.g., "just did my long run", "tempo felt hard today"):
+
+1. Ask up to 5 follow-up questions:
+   - How did the workout feel overall? (1-10 scale)
+   - What were the key challenges or highlights?
+   - Did you stick to the planned structure?
+   - How were energy, hydration, and mental focus?
+   - What would you change next time?
+2. Save the note using the script:
+   ```bash
+   python3 scripts/workout_notes.py add \
+     --date 2026-03-08 \
+     --type "long run" \
+     --feel 7 \
+     --summary "25km, felt strong through 20km, legs heavy last 5km" \
+     --notes "Energy good, pushed too hard on hills"
+   ```
+3. Before giving training advice, check for patterns:
+   ```bash
+   python3 scripts/workout_notes.py patterns
+   ```
+   This returns pattern analysis after 5+ check-ins (e.g., trending fatigue, consistently hard tempos).
+4. Keep check-ins to 5-7 turns (hard cap: 10)
+
+The athlete initiates this — don't prompt unprompted. But if they mention a workout in passing, offer to do a quick check-in.
+
+See `references/training-principles.md` for RPE scale and wellness monitoring.
+
 ## Quick Start
 
 ### 1. Connect Strava
@@ -148,18 +204,32 @@ All scripts output structured JSON for the AI agent to interpret and deliver coa
 
 ## Configuration
 
-All thresholds are optional — sensible defaults with validation. Set via environment variables or `.env` file.
+### Athlete Config (Required)
+
+HR thresholds and athlete data are stored in `~/.config/marathon-training-coach/athlete_config.json` via `athlete_config.py`. MAX_HR and VT1_HR are **required** — all zone calculations, TSS, and 80/20 checks depend on them.
+
+```bash
+# Required: set HR thresholds
+python3 scripts/athlete_config.py set --max-hr 201 --vt1-hr 175
+
+# Optional: add background info
+python3 scripts/athlete_config.py set --years-running 3 --peak-weekly-km 85
+python3 scripts/athlete_config.py set --long-run-day saturday --rest-days monday,friday
+
+# View current config
+python3 scripts/athlete_config.py get
+```
+
+### Environment Variables
+
+Strava credentials and training thresholds are set via `.env` file:
 
 ```bash
 # Strava (required)
 STRAVA_CLIENT_ID=your_id
 STRAVA_CLIENT_SECRET=your_secret
 
-# HR configuration (used for zone calculations)
-MAX_HEART_RATE=190              # 140-230, default: 190
-VT1_HEART_RATE=142              # 100-230, default: 75% of max HR
-
-# Training thresholds (validated ranges)
+# Training thresholds (optional - sensible defaults)
 MAX_WEEKLY_MILEAGE_JUMP=30      # 5-100%, default: 30
 MAX_HARD_DAY_PERCENTAGE=25      # 5-100%, default: 25
 PLANNED_REST_DAYS=2             # 0-7, default: 2
@@ -278,15 +348,47 @@ VERBOSE=false
 
 See `references/training-principles.md` for the full guide with 30+ scientific references.
 
+## Reference Files
+
+Read these as needed — not all at once. Progressive discovery keeps token usage low.
+
+| File | When to Read |
+|------|-------------|
+| `references/athlete-context-template.md` | Building a new athlete profile |
+| `references/training-principles.md` | Explaining training science to athlete |
+| `references/periodization.md` | Designing training blocks, adjusting load |
+| `references/plans/README.md` | Athlete asks for a training plan |
+| `references/race-day-execution.md` | Within 7 days of race |
+
+## Plan Personalization Workflow
+
+When an athlete asks for a training plan:
+
+1. Read `athlete_context.md` (know the runner)
+2. Read `references/plans/README.md` (pick closest plan)
+3. Read the selected plan file
+4. Adjust for athlete's zones, schedule, fitness, and foundation
+5. Discuss and validate with athlete before prescribing
+
 ## Files
 
 - `scripts/auth.py` — Strava OAuth setup (tokens stored in XDG config dir)
-- `scripts/utils.py` — Shared utilities: HR zones, Strava API, activity caching, marathon config, training phases
-- `scripts/coach_check.py` — Daily training analysis: load spikes, 80/20, recovery, streaks, marathon alignment
-- `scripts/weekly_report.py` — Weekly summary: 4-week trends, ACWR, intensity distribution, marathon countdown
+- `scripts/utils.py` — Shared utilities: HR zones, Strava API, activity caching, TSS/CTL/ATL/TSB, config loading
+- `scripts/athlete_config.py` — CLI to manage athlete HR thresholds and profile (set/get/remove)
+- `scripts/coach_check.py` — Daily training analysis: load spikes, 80/20, recovery, streaks, marathon alignment, TSB fatigue
+- `scripts/weekly_report.py` — Weekly summary: 4-week trends, ACWR, intensity distribution, TSS, CTL/ATL/TSB
 - `scripts/marathon_config.py` — CLI to manage upcoming races (set/get/list/remove)
-- `scripts/marathon_status.py` — Race readiness assessment: phase, long runs, pace estimates, taper detection
+- `scripts/marathon_status.py` — Race readiness assessment: phase, long runs, pace estimates, taper, strengths/limiters
+- `scripts/workout_notes.py` — Persist and analyze post-workout check-in notes (add/list/patterns)
 - `references/training-principles.md` — Evidence-based injury prevention guide
+- `references/athlete-context-template.md` — Template for building persistent athlete profiles
+- `references/periodization.md` — Loading patterns, recovery weeks, adaptation timelines
+- `references/race-day-execution.md` — Pacing, nutrition, hydration, caffeine for race day
+- `references/plans/README.md` — Index of available training plans
+- `references/plans/sub3-16week.md` — Sub-3 marathon plan (16 weeks)
+- `references/plans/sub330-16week.md` — Sub-3:30 marathon plan (16 weeks)
+- `references/plans/sub4-16week.md` — Sub-4 marathon plan (16 weeks)
+- `references/plans/beginner-16week.md` — Beginner marathon plan (16 weeks)
 
 ## Rate Limits
 

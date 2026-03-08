@@ -18,7 +18,7 @@ from typing import Optional, Dict, List
 
 from utils import (
     CONFIG_DIR, setup_logging,
-    get_hr_zone, safe_float, safe_int,
+    get_hr_zone, is_easy_hr, safe_float, safe_int,
     format_pace, format_duration,
     load_tokens, fetch_activities,
     load_marathons, get_next_marathon, find_marathon,
@@ -333,6 +333,120 @@ def _parse_time_to_seconds(time_str: str) -> Optional[int]:
     except (ValueError, TypeError):
         return None
 
+def analyze_strengths_limiters(activities: List[Dict], long_run_analysis: Dict,
+                                weekly_volumes: List[Dict]) -> Dict:
+    """Analyze athlete's strengths and limiters for marathon preparation.
+    Scores: endurance, speed, volume consistency, recovery discipline."""
+    strengths = []
+    limiters = []
+
+    # --- Endurance Score ---
+    longest = long_run_analysis.get('longest')
+    if longest:
+        longest_km = longest['distance_km']
+        if longest_km >= 30:
+            strengths.append(f"Endurance: longest run {longest_km:.1f}km shows strong distance capacity")
+        elif longest_km >= 25:
+            pass  # neutral
+        elif longest_km < 20:
+            limiters.append(f"Endurance: longest run only {longest_km:.1f}km — need to build toward 30-35km")
+    else:
+        limiters.append("Endurance: no long runs (15km+) found — long run development is critical")
+
+    # 90+ min run frequency
+    cutoff_8w = datetime.now(timezone.utc) - timedelta(weeks=8)
+    long_session_count = 0
+    for a in activities:
+        if a.get('type') != 'Run':
+            continue
+        try:
+            act_date = datetime.fromisoformat(a.get('start_date', '').replace('Z', '+00:00'))
+            if act_date < cutoff_8w:
+                continue
+        except (ValueError, TypeError):
+            continue
+        moving_time_min = safe_float(a.get('moving_time'), 0) / 60.0
+        if moving_time_min >= 90:
+            long_session_count += 1
+
+    if long_session_count >= 6:
+        strengths.append(f"Long run consistency: {long_session_count} runs of 90+ min in last 8 weeks")
+    elif long_session_count <= 2:
+        limiters.append(f"Long run frequency: only {long_session_count} runs of 90+ min in last 8 weeks — aim for weekly")
+
+    # --- Speed Score ---
+    cutoff_4w = datetime.now(timezone.utc) - timedelta(weeks=4)
+    z3_count = 0
+    z4_count = 0
+    for a in activities:
+        if a.get('type') != 'Run':
+            continue
+        try:
+            act_date = datetime.fromisoformat(a.get('start_date', '').replace('Z', '+00:00'))
+            if act_date < cutoff_4w:
+                continue
+        except (ValueError, TypeError):
+            continue
+        avg_hr = safe_int(a.get('average_heartrate'), 0)
+        if avg_hr > 0:
+            zone = get_hr_zone(avg_hr)
+            if zone == 'Z3':
+                z3_count += 1
+            elif zone in ('Z4', 'Z5'):
+                z4_count += 1
+
+    quality_sessions = z3_count + z4_count
+    if quality_sessions >= 6:
+        strengths.append(f"Speed work: {quality_sessions} quality sessions (Z3+) in last 4 weeks")
+    elif quality_sessions <= 2:
+        limiters.append(f"Speed work: only {quality_sessions} quality sessions in last 4 weeks — add tempo/threshold work")
+
+    # --- Volume Consistency ---
+    completed = [w for w in weekly_volumes if not w.get('is_current_week', False)]
+    if len(completed) >= 3:
+        kms = [w['km'] for w in completed]
+        avg_km = sum(kms) / len(kms)
+        if avg_km > 0:
+            variance = sum((k - avg_km) ** 2 for k in kms) / len(kms)
+            cv = (variance ** 0.5) / avg_km  # coefficient of variation
+            if cv < 0.15:
+                strengths.append(f"Volume consistency: low variance (CV {cv:.0%}) — steady training")
+            elif cv > 0.35:
+                limiters.append(f"Volume consistency: high variance (CV {cv:.0%}) — aim for steadier weekly km")
+
+    # --- Recovery Discipline (80/20 compliance) ---
+    cutoff_2w = datetime.now(timezone.utc) - timedelta(weeks=2)
+    easy_count = 0
+    hard_count = 0
+    for a in activities:
+        if a.get('type') != 'Run':
+            continue
+        try:
+            act_date = datetime.fromisoformat(a.get('start_date', '').replace('Z', '+00:00'))
+            if act_date < cutoff_2w:
+                continue
+        except (ValueError, TypeError):
+            continue
+        avg_hr = safe_int(a.get('average_heartrate'), 0)
+        if avg_hr > 0:
+            if is_easy_hr(avg_hr):
+                easy_count += 1
+            else:
+                hard_count += 1
+
+    total_with_hr = easy_count + hard_count
+    if total_with_hr >= 4:
+        easy_pct = (easy_count / total_with_hr) * 100
+        if easy_pct >= 75:
+            strengths.append(f"Recovery discipline: {easy_pct:.0f}% easy runs — good 80/20 compliance")
+        elif easy_pct < 60:
+            limiters.append(f"Recovery discipline: only {easy_pct:.0f}% easy runs — too many hard days, risk of burnout")
+
+    return {
+        'strengths': strengths,
+        'limiters': limiters,
+    }
+
 # ============================================================================
 # MAIN ASSESSMENT
 # ============================================================================
@@ -360,6 +474,7 @@ def assess_marathon_readiness(marathon: Dict, activities: List[Dict]) -> Dict:
     weekly_volumes = analyze_weekly_volume(activities)
     pace_estimate = estimate_race_pace(activities)
     taper_info = detect_taper(weekly_volumes)
+    strengths_limiters = analyze_strengths_limiters(activities, long_run_analysis, weekly_volumes)
 
     # Compute weekly averages from completed weeks
     completed_weeks = [w for w in weekly_volumes if not w['is_current_week']]
@@ -404,6 +519,7 @@ def assess_marathon_readiness(marathon: Dict, activities: List[Dict]) -> Dict:
         },
         'race_pace_readiness': pace_estimate,
         'taper_detection': taper_info,
+        'strengths_limiters': strengths_limiters,
         'recommendations': recommendations,
         'generated_at': datetime.now(timezone.utc).isoformat(),
     }

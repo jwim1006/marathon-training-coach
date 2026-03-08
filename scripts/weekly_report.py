@@ -14,6 +14,7 @@ from utils import (
     CONFIG_DIR,
     safe_float, safe_int,
     get_hr_zone, is_easy_hr,
+    calculate_hr_tss, calculate_ctl_atl_tsb,
     setup_logging,
     load_tokens, fetch_activities,
     get_marathon_report_info,
@@ -133,6 +134,24 @@ def generate_report(activities: List[Dict]) -> Dict:
                 parts.append(f"{z}: {zc[z]}")
         zone_summary = " | ".join(parts)
 
+    # Training stress metrics
+    training_stress = calculate_ctl_atl_tsb(activities)
+
+    # Calculate weekly TSS
+    now_utc = datetime.now(timezone.utc)
+    week_start_utc = now_utc.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=now_utc.weekday())
+    weekly_tss = 0.0
+    for a in activities:
+        try:
+            act_date = datetime.fromisoformat(a.get('start_date', '').replace('Z', '+00:00'))
+            if act_date >= week_start_utc:
+                duration_sec = safe_float(a.get('moving_time'), 0)
+                avg_hr = safe_float(a.get('average_heartrate'), 0)
+                if duration_sec > 0 and avg_hr > 0:
+                    weekly_tss += calculate_hr_tss(duration_sec, avg_hr)
+        except (ValueError, TypeError):
+            continue
+
     return {
         'week_km': current_week['km'],
         'week_runs': current_week['runs'],
@@ -144,6 +163,8 @@ def generate_report(activities: List[Dict]) -> Dict:
         'acwr': round(acwr, 2) if acwr else None,
         'acwr_zone': acwr_zone,
         'marathon': get_marathon_report_info(),
+        'weekly_tss': round(weekly_tss, 1),
+        'training_stress': training_stress,
         'generated_at': datetime.now(timezone.utc).isoformat(),
     }
 
