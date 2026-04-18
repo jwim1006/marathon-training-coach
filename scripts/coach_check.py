@@ -27,6 +27,7 @@ from utils import (
     load_tokens, fetch_activities,
     get_next_marathon, get_training_phase, get_marathon_report_info,
 )
+from marathon_status import estimate_race_pace, analyze_long_runs
 
 # ============================================================================
 # COACH-SPECIFIC CONFIGURATION
@@ -378,10 +379,37 @@ def main() -> int:
     if marathon_alert and state.should_alert('marathon'):
         alerts.append(marathon_alert)
 
+    # Race pace projection + peak-phase MP-long-run check
+    pace_estimate = estimate_race_pace(activities)
+    long_run_analysis = analyze_long_runs(activities)
+    marathon_info = get_marathon_report_info()
+    phase = marathon_info.get('phase') if marathon_info else None
+
+    if phase == 'peak':
+        mp_count = long_run_analysis.get('mp_finish_long_runs_last_4w', 0)
+        if mp_count < 2 and state.should_alert('mp_long_run_gap'):
+            alerts.append({
+                'type': 'mp_long_run_gap',
+                'severity': 'high',
+                'message': (
+                    f"Peak phase and only {mp_count} MP-finish long run(s) in the last 4 weeks."
+                ),
+                'recommendation': (
+                    "Schedule a 2.5hr long run this weekend with the last 40-50min at MP (4:15/km). "
+                    "Target 3+ MP-finish long runs in the peak block."
+                ),
+            })
+
     result = {
         'weekly_km': round(weekly_km, 1),
+        'race_pace_projection': pace_estimate,
+        'long_run_summary': {
+            'recent_long_runs': long_run_analysis.get('recent_long_runs', 0),
+            'mp_finish_long_runs_last_4w': long_run_analysis.get('mp_finish_long_runs_last_4w', 0),
+            'longest': long_run_analysis.get('longest'),
+        },
         'alerts': alerts,
-        'checks_run': ['intensity', 'recovery', 'streak', 'marathon'],
+        'checks_run': ['intensity', 'recovery', 'streak', 'marathon', 'mp_long_run_gap'],
         'generated_at': datetime.now(timezone.utc).isoformat(),
     }
 

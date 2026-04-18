@@ -395,6 +395,52 @@ def fetch_activities(access_token: str, logger: logging.Logger, days: int = 28) 
     logger.debug(f"Returning {len(filtered)} activities (cache: {len(all_activities)} total)")
     return filtered
 
+
+ACTIVITY_DETAIL_CACHE_FILE = os.path.join(CONFIG_DIR, 'activity_details_cache.json')
+
+
+def fetch_activity_detail(access_token: str, activity_id: int, logger: logging.Logger) -> Optional[Dict]:
+    """Fetch full activity detail (including laps) with permanent caching.
+    Activity data is immutable once recorded, so cache has no TTL."""
+    # Load cache
+    cache = {}
+    try:
+        with open(ACTIVITY_DETAIL_CACHE_FILE, 'r') as f:
+            cache = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
+    key = str(activity_id)
+    if key in cache:
+        logger.debug(f"Detail cache hit for {activity_id}")
+        return cache[key]
+
+    url = f'https://www.strava.com/api/v3/activities/{activity_id}'
+    headers = {
+        'Authorization': f'Bearer {access_token}',
+        'User-Agent': 'TrainingCoach/2.0',
+    }
+    req = urllib.request.Request(url, headers=headers)
+    try:
+        with urllib.request.urlopen(req, timeout=30) as response:
+            data = json.loads(response.read().decode('utf-8'))
+        cache[key] = data
+        try:
+            with open(ACTIVITY_DETAIL_CACHE_FILE, 'w') as f:
+                json.dump(cache, f, separators=(',', ':'))
+            os.chmod(ACTIVITY_DETAIL_CACHE_FILE, 0o600)
+        except (IOError, OSError) as e:
+            logger.debug(f"Detail cache write error: {e}")
+        return data
+    except HTTPError as e:
+        logger.error(f"HTTP {e.code} fetching activity {activity_id}")
+    except (URLError, TimeoutError) as e:
+        logger.error(f"Network error fetching activity {activity_id}: {e}")
+    except json.JSONDecodeError:
+        logger.error(f"Invalid JSON for activity {activity_id}")
+    return None
+
+
 # ============================================================================
 # ATHLETE CONFIG
 # ============================================================================

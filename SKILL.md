@@ -66,6 +66,35 @@ Built on the **80/20 polarized training model** (Seiler, 2010; Stoggl & Sperlich
 
 The script provides `estimated_finish_time` — use this value directly. Do not recalculate from pace values. The target is **sub-3:00:00** (4:15/km) — flag any projection slower than that and suggest phase-appropriate adjustments.
 
+## Sub-3 Readiness Gate
+
+Before endorsing sub-3 as the target, confirm the athlete meets these markers (from `athlete_config.py` and Strava data):
+
+| Check | Minimum | Red flag |
+|-------|---------|----------|
+| Current weekly volume | 60+ km/week for 4+ weeks | Under 50 km/week → suggest sub-3:15 or extended base |
+| Recent HM time | ≤ 1:25 | Slower than 1:30 → sub-3 is aspirational this cycle |
+| Recent 10K time | ≤ 38:00 | Slower than 40:00 → fitness gap too wide for 16 weeks |
+| Long run foundation | 25km+ in last 6 weeks | Longest under 20km → extend base |
+| Injury-free weeks | 6+ | Any injury in last 4 weeks → delay or gentler plan |
+
+If any red flag fires, surface it explicitly and propose sub-3:15 or an extended base block.
+
+## Sub-3 Phase Playbook
+
+Tailor weekly coaching to the current phase (auto-detected from `marathon_status.py`):
+
+| Phase | Weeks | Focus | Key workouts | Long run | What to flag |
+|-------|-------|-------|--------------|----------|--------------|
+| **Base** | 1-4 | Aerobic volume, neuromuscular priming | Easy Z2, 2x strides, 1 light VO2, hill sprints | Builds to 2hrs Z2; first MP touch wk 4 | Too much Z3+ too early; missing strides |
+| **Build** | 5-8 | Threshold + MP intro | 1 tempo Z3, 1 threshold Z4 (4x10min Z4), 1 race-sim | 2.25-2.5hrs with 30min Z3 finish | 80/20 below 75% easy; no MP in long runs |
+| **Peak** | 9-12 | Race-specific, peak volume | 2x25min Z3 or 3x20min Z3, race-sim long runs | 2.5hrs with 40-50min MP; 3+ MP-finish long runs this block | Finish projection >3:05; missing MP long runs |
+| **Taper** | 13-16 | Shed fatigue, keep sharpness | Short tempos + strides + MP pickups | Drop: -20%, -40%, -60%, race week minimal | Volume not dropping; too much Z4/Z5 late |
+
+Sub-3 paces: **MP 4:15/km, Threshold ~4:00/km, VO2 ~3:50/km**. Every workout prescription should reference these paces explicitly.
+
+Full plan and readiness details: `references/plans/sub3-16week.md`.
+
 ## Athlete Setup
 
 At the start of every session, check if the athlete is configured:
@@ -92,33 +121,95 @@ Check: does `~/.config/marathon-training-coach/athlete_context.md` exist?
 
 This file replaces re-running all scripts every session. One 2-3k token file provides full coaching context.
 
-## Post-Workout Check-In
+## Workout Lifecycle (Pre → Post → Pattern)
 
-When the athlete tells you about a workout (e.g., "just did my long run", "tempo felt hard today"):
+This skill runs a three-stage loop around every key workout. The agent is expected to drive this proactively — the athlete should not have to prompt each step.
 
-1. Ask up to 5 follow-up questions:
-   - How did the workout feel overall? (1-10 scale)
-   - What were the key challenges or highlights?
-   - Did you stick to the planned structure?
-   - How were energy, hydration, and mental focus?
-   - What would you change next time?
-2. Save the note using the script:
+### Stage 1: Pre-Workout Planning
+
+When the athlete describes an upcoming key workout ("tomorrow I'm doing 6x800m", "long run Saturday with 40min MP"):
+
+1. Confirm the session fits the current training phase (cross-check with `marathon_status.py --json` output).
+2. Specify target paces and HR zones explicitly using sub-3 references (MP 4:15/km, Threshold 4:00/km, VO2 3:50/km).
+3. Log a placeholder so the feedback loop closes later:
    ```bash
    python3 scripts/workout_notes.py add \
-     --date 2026-03-08 \
-     --type "long run" \
-     --feel 7 \
-     --summary "25km, felt strong through 20km, legs heavy last 5km" \
-     --notes "Energy good, pushed too hard on hills"
+     --date 2026-04-20 \
+     --type "intervals" \
+     --summary "PLANNED: 6x800m @ 3:12 w/ 400m jog recovery" \
+     --notes "Target HR Z4-Z5 on reps. Rep goal pace 3:12."
    ```
-3. Before giving training advice, check for patterns:
-   ```bash
-   python3 scripts/workout_notes.py patterns
-   ```
-   This returns pattern analysis after 5+ check-ins (e.g., trending fatigue, consistently hard tempos).
-4. Keep check-ins to 5-7 turns (hard cap: 10)
+4. Remember the plan in context so Stage 2 can compare intent vs execution.
 
-The athlete initiates this — don't prompt unprompted. But if they mention a workout in passing, offer to do a quick check-in.
+### Stage 2: Post-Workout Analysis (Objective + Subjective)
+
+When the athlete says they finished ("just did my long run", "tempo is done"), **do both automatically**:
+
+**A) Pull the objective data yourself** (don't wait to be asked):
+```bash
+# Most recent run
+python3 scripts/workout_analysis.py
+
+# Or target the matching type
+python3 scripts/workout_analysis.py --type intervals
+python3 scripts/workout_analysis.py --type long_run
+
+# Or a specific activity
+python3 scripts/workout_analysis.py --activity-id 18027968819
+```
+
+The JSON returns:
+- **Structured numbers** (`detected_structure`, `reps`, `hr_drift_bpm`, `pace_cv_pct`, `mp_segment_detected`) — these are objective and always accurate. Use them directly.
+- **`assessment` bullets** — generic rule-based fallbacks (e.g., "drift +5 bpm → mild"). They do NOT know the planned workout, phase, or how you felt. **Treat them as a sanity check, not the coaching output.** The real interpretation is your job as the agent.
+
+Your interpretation should combine:
+1. The raw numbers from the JSON
+2. The planned workout (what the athlete told you in Stage 1)
+3. The current phase playbook (Base/Build/Peak/Taper expectations)
+4. The athlete's subjective feedback (Stage 2B)
+5. Accumulated patterns from `workout_notes.py patterns`
+
+Example: HR drift +8 bpm on a peak-phase 6x1km at threshold is *expected and fine*. The same drift on a base-phase easy progression is *a red flag*. The assessment bullet can't tell the difference — you can.
+
+**B) Collect subjective feedback** (keep this short — 2-3 questions, max 5 turns):
+- Overall feel (1-10)
+- Anything that surprised you (good or bad)
+- Fueling / sleep / stress if relevant
+
+**C) Merge both into a rich note and save it**:
+```bash
+python3 scripts/workout_notes.py add \
+  --date 2026-04-20 \
+  --type "intervals" \
+  --feel 7 \
+  --summary "PLANNED 6x800m @ 3:12 | ACTUAL 6 reps avg 3:14, HR drift +7bpm, pace CV 1.8%" \
+  --notes "Felt strong first 4 reps, last 2 legs heavy. HR drift suggests rep 1 slightly hot. Sleep 6.5hrs night before."
+```
+
+The summary line should **always** combine planned vs actual + the objective numbers from `workout_analysis.py`. The notes field adds subjective context.
+
+**D) Deliver comprehensive feedback** combining both streams:
+- What the data shows (pace, HR, drift, structure adherence)
+- What the athlete reported (feel, context)
+- What it means for the next session (e.g., "your rep 1 was hot and rep 6 paid for it — next time start closer to target")
+- Whether this workout moves sub-3 readiness forward (reference the Sub-3 Phase Playbook)
+
+### Stage 3: Cycle-Wide Pattern Review
+
+Before giving training advice or adjusting the plan, check accumulated patterns:
+```bash
+python3 scripts/workout_notes.py patterns
+```
+
+This reveals signals like: "quality sessions trending down in feel", "long runs hitting MP consistently", "fueling flagged on 3 of last 4 long runs". Feed those into the marathon execution plan:
+
+- If patterns are positive → keep progressing or consider bumping target paces.
+- If patterns show recurring fatigue / low feel scores → propose a cutback week or extra easy day.
+- If MP-finish long runs are missing from peak phase → explicitly schedule one.
+
+### Why this matters for sub-3
+
+Subjective-only notes miss drift and pacing errors the athlete can't feel in the moment. Objective-only data misses fueling, sleep, and mental context. Combining both — stored across the cycle — is what lets the agent generate a plan adjustment that's actually informed, rather than generic advice.
 
 See `references/training-principles.md` for RPE scale and wellness monitoring.
 
@@ -276,6 +367,51 @@ VERBOSE=false
 }
 ```
 
+### workout_analysis.py (Single Workout Deep-Dive)
+
+Intervals session:
+```json
+{
+  "activity_id": 18027968819,
+  "date": "2026-04-08",
+  "distance_km": 10.01,
+  "duration_min": 49.2,
+  "avg_hr": 164,
+  "detected_structure": "intervals",
+  "analysis": {
+    "warmup": {"distance_m": 6592.1, "duration_s": 2055, "pace": "5:11", "avg_hr": 162},
+    "reps": [
+      {"index": 1, "distance_m": 1002.9, "pace": "4:08", "avg_hr": 184, "max_hr": 189, "zone": "Z4"},
+      {"index": 2, "distance_m": 998.0,  "pace": "4:09", "avg_hr": 183, "max_hr": 190, "zone": "Z3"},
+      {"index": 3, "distance_m": 1001.7, "pace": "4:08", "avg_hr": 189, "max_hr": 192, "zone": "Z4"}
+    ],
+    "hr_drift_bpm": 5,
+    "pace_cv_pct": 0.0
+  },
+  "assessment": [
+    "3 work reps at 4:08 starting pace.",
+    "HR drift +5 bpm - mild, acceptable for threshold work.",
+    "Pace consistency excellent (+/-0.0%)."
+  ]
+}
+```
+
+Long run with MP finish:
+```json
+{
+  "detected_structure": "long_run",
+  "analysis": {
+    "full_run": {"distance_m": 16047.2, "pace": "4:20", "avg_hr": 181},
+    "last_40min": {"distance_m": 11047.2, "pace": "4:16", "avg_hr": 183},
+    "mp_segment_detected": true
+  },
+  "assessment": [
+    "Last 40min: 4:16 @ 183 bpm.",
+    "MP segment confirmed - this counts as an MP-finish long run."
+  ]
+}
+```
+
 ### marathon_status.py (Race Readiness)
 
 ```json
@@ -354,15 +490,13 @@ When an athlete asks for a training plan:
 - `scripts/marathon_config.py` — CLI to manage upcoming races (set/get/list/remove)
 - `scripts/marathon_status.py` — Race readiness assessment: phase, long runs, pace estimates, taper, strengths/limiters
 - `scripts/workout_notes.py` — Persist and analyze post-workout check-in notes (add/list/patterns)
+- `scripts/workout_analysis.py` — Deep-dive single workout via Strava laps: auto-detects intervals / long run / tempo / easy, per-rep HR + pace, drift, MP-segment detection
 - `references/training-principles.md` — Evidence-based injury prevention guide
 - `references/athlete-context-template.md` — Template for building persistent athlete profiles
 - `references/periodization.md` — Loading patterns, recovery weeks, adaptation timelines
 - `references/race-day-execution.md` — Pacing, nutrition, hydration, caffeine for race day
 - `references/plans/README.md` — Index of available training plans
 - `references/plans/sub3-16week.md` — Sub-3 marathon plan (16 weeks)
-- `references/plans/sub330-16week.md` — Sub-3:30 marathon plan (16 weeks)
-- `references/plans/sub4-16week.md` — Sub-4 marathon plan (16 weeks)
-- `references/plans/beginner-16week.md` — Beginner marathon plan (16 weeks)
 
 ## Rate Limits
 

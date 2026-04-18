@@ -37,12 +37,20 @@ LONG_RUN_TARGETS_MIN = {
 
 # Volume change expectations by phase (relative to previous phase peak)
 PHASE_VOLUME_GUIDANCE = {
-    'pre_training': 'Build aerobic base gradually. Follow 10% rule for weekly mileage increases.',
-    'base': 'Gradually increase weekly volume. Target a ~10% weekly mileage increase.',
-    'build': 'Continue building volume with more quality sessions. Aim for your highest consistent mileage.',
-    'peak': 'Maintain or slightly exceed your highest volume. This is the toughest phase.',
-    'taper': 'Reduce volume while keeping some intensity. Trust your fitness.',
-    'post_race': 'Take 1-2 weeks easy. Reverse taper back into training.',
+    'pre_training': 'Build aerobic base gradually. For sub-3, confirm you can hold 60+ km/week before starting the 16-week block.',
+    'base': 'Build volume toward 80-90 km/week. Keep it aerobic — most runs Z1-Z2, add strides and one light quality session.',
+    'build': 'Introduce threshold work and the first MP race simulation. Target 85-95 km/week with 2-3 quality sessions.',
+    'peak': 'Highest volume of the cycle (90-105 km/week). Long runs should finish with 40-50min at MP. At least 3 MP-finish long runs in this block.',
+    'taper': 'Cut volume progressively (-20%, -40%, -60%, then race week). Keep intensity short and sharp — no more long threshold work.',
+    'post_race': 'Take 1-2 weeks fully easy. Reverse taper gradually before resuming structured training.',
+}
+
+# Sub-3 specific concrete tips by phase
+SUB3_PHASE_TIPS = {
+    'base': "Staples: easy Z2 runs, 2x/week strides, short hill sprints, 1 light VO2 session. Long run builds to 2hrs Z2 with first MP touch in week 4.",
+    'build': "Staples: 1 tempo (Z3), 1 threshold (Z4) — e.g. 4x10min Z4 — plus a 2.25-2.5hr long run with 30min Z3 finish.",
+    'peak': "Key workouts: 2x25min Z3 or 3x20min Z3, race-sim long runs with 40-50min at MP (4:15/km). Volume at peak — prioritize sleep and fueling.",
+    'taper': "Keep workouts short with MP pickups. Drop volume but not intensity quality. Practice race-day fueling and gear.",
 }
 
 # ============================================================================
@@ -50,7 +58,9 @@ PHASE_VOLUME_GUIDANCE = {
 # ============================================================================
 
 def _build_long_run(a: Dict) -> Optional[Dict]:
-    """Build a long run record from an activity, or None if not a long run"""
+    """Build a long run record from an activity, or None if not a long run.
+    Flags `has_mp_segment` when aggregate HR reached Z3 (VT1+) — a proxy for
+    marathon-pace work since we only have activity-level (not stream) data."""
     if a.get('type') != 'Run':
         return None
     distance_km = safe_float(a.get('distance'), 0) / 1000.0
@@ -58,22 +68,30 @@ def _build_long_run(a: Dict) -> Optional[Dict]:
         return None
     moving_time_min = safe_float(a.get('moving_time'), 0) / 60.0
     pace_decimal = moving_time_min / distance_km if distance_km > 0 else 0
+    avg_hr = safe_int(a.get('average_heartrate'), 0)
+    zone = get_hr_zone(avg_hr) if avg_hr > 0 else None
+    has_mp = bool(zone and zone in ('Z3', 'Z4', 'Z5'))
     return {
         'date': a.get('start_date', '')[:10],
         'distance_km': round(distance_km, 2),
         'duration_min': round(moving_time_min, 1),
-        'avg_hr': safe_int(a.get('average_heartrate'), 0),
+        'avg_hr': avg_hr,
+        'zone': zone,
+        'has_mp_segment': has_mp,
         'pace_min_km': format_pace(pace_decimal) if pace_decimal > 0 else '0:00',
     }
 
 
 def analyze_long_runs(activities: List[Dict]) -> Dict:
     """Analyze long runs across the full training block.
-    Returns all-time top 5 by distance + recent (last 3 weeks) count."""
-    cutoff_3w = datetime.now(timezone.utc) - timedelta(weeks=3)
+    Returns all-time top 5, recent counts, and MP-segment tracking."""
+    now = datetime.now(timezone.utc)
+    cutoff_3w = now - timedelta(weeks=3)
+    cutoff_4w = now - timedelta(weeks=4)
 
     all_long = []
     recent_count = 0
+    mp_last_4w = 0
 
     for a in activities:
         lr = _build_long_run(a)
@@ -84,6 +102,8 @@ def analyze_long_runs(activities: List[Dict]) -> Dict:
             act_date = datetime.fromisoformat(a.get('start_date', '').replace('Z', '+00:00'))
             if act_date >= cutoff_3w:
                 recent_count += 1
+            if act_date >= cutoff_4w and lr['has_mp_segment']:
+                mp_last_4w += 1
         except (ValueError, TypeError):
             pass
 
@@ -93,6 +113,7 @@ def analyze_long_runs(activities: List[Dict]) -> Dict:
     return {
         'total_long_runs': len(all_long),
         'recent_long_runs': recent_count,
+        'mp_finish_long_runs_last_4w': mp_last_4w,
         'longest': longest,
         'top_long_runs': all_long[:5],
     }
@@ -304,20 +325,30 @@ def generate_recommendations(phase: str, plan_week: Optional[int], long_run_anal
                         f"vs {target_time} target. You're ahead of schedule."
                     )
 
-    # Week-specific tips
-    if phase == 'base':
-        recs.append("Keep most runs easy (Z1-Z2). Introduce strides and light VO2max work.")
-    elif phase == 'build':
-        recs.append("Add threshold (Z4) sessions and race simulations. Long runs should include Z3 finishes.")
-    elif phase == 'peak':
-        recs.append("This is the hardest phase. Prioritize sleep and nutrition. Include race-pace long runs.")
-    elif phase == 'taper':
+    # Week-specific concrete sub-3 tips
+    if phase in SUB3_PHASE_TIPS:
+        recs.append(SUB3_PHASE_TIPS[phase])
+
+    if phase == 'taper':
         if weeks_to_race <= 1:
-            recs.append("Race week: Very light running + strides only. Trust your training. Carb load 2-3 days out.")
+            recs.append("Race week: Very light running + strides only. Trust your training. Carb load 2-3 days out (8-10g/kg/day).")
         elif weeks_to_race <= 2:
-            recs.append("Final taper: Minimal intensity, short easy runs. Focus on rest and race-day logistics.")
-        else:
-            recs.append("Early taper: Reduce volume ~20-40% but maintain some quality to stay sharp.")
+            recs.append("Final taper: Minimal intensity, short easy runs. Lock in race-day fueling and logistics.")
+
+    # Readiness gate — flag aspirational target in peak
+    if phase == 'peak' and long_run_analysis.get('longest'):
+        longest_km = long_run_analysis['longest'].get('distance_km', 0)
+        if longest_km < 28:
+            recs.append(
+                f"Readiness gap: longest run is {longest_km:.1f}km. For sub-3, you want 30km+ runs with an MP finish in peak phase."
+            )
+
+        mp_count = long_run_analysis.get('mp_finish_long_runs_last_4w', 0)
+        if mp_count < 2:
+            recs.append(
+                f"Only {mp_count} MP-finish long run(s) in the last 4 weeks. Peak phase needs 3+. "
+                "Schedule a 2.5hr long run with the last 40-50min at MP (4:15/km)."
+            )
 
     return [r for r in recs if r]
 

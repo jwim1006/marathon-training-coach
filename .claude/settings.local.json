@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(uv run:*)",
-      "Bash(python -m py_compile scripts/coach_check.py scripts/weekly_report.py scripts/utils.py scripts/athlete_config.py scripts/marathon_status.py)"
+      "Bash(python -m py_compile scripts/coach_check.py scripts/weekly_report.py scripts/utils.py scripts/athlete_config.py scripts/marathon_status.py)",
+      "WebSearch",
+      "Bash(python -m py_compile scripts/marathon_status.py scripts/coach_check.py scripts/weekly_report.py scripts/utils.py)",
+      "Bash(python -m py_compile scripts/coach_check.py scripts/weekly_report.py scripts/marathon_status.py scripts/utils.py)"
     ]
   }
 }

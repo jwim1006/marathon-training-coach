@@ -18,6 +18,7 @@ from utils import (
     load_tokens, fetch_activities,
     get_marathon_report_info,
 )
+from marathon_status import estimate_race_pace, analyze_long_runs
 
 logger = setup_logging('weekly_report', os.path.join(CONFIG_DIR, 'report.log'))
 
@@ -107,14 +108,36 @@ def generate_report(activities: List[Dict]) -> Dict:
                 parts.append(f"{z}: {zc[z]}")
         zone_summary = " | ".join(parts)
 
+    # Week-over-week delta (current vs previous completed week)
+    wow_delta_km = None
+    wow_delta_pct = None
+    if len(weeks) >= 2:
+        prev_km = weeks[-2]['km']
+        curr_km = current_week['km']
+        wow_delta_km = round(curr_km - prev_km, 1)
+        if prev_km > 0:
+            wow_delta_pct = round(((curr_km - prev_km) / prev_km) * 100, 1)
+
+    # Race pace projection and long-run MP tracking
+    pace_estimate = estimate_race_pace(activities)
+    long_run_analysis = analyze_long_runs(activities)
+
     return {
         'week_km': current_week['km'],
         'week_runs': current_week['runs'],
         'four_week_avg_km': round(sum(w['km'] for w in weeks) / len(weeks), 1) if weeks else 0,
+        'wow_delta_km': wow_delta_km,
+        'wow_delta_pct': wow_delta_pct,
         'intensity': intensity,
         'eight_twenty_ok': eight_twenty_ok,
         'zone_summary': zone_summary,
         'weekly_data': weeks,
+        'race_pace_readiness': pace_estimate,
+        'long_run_summary': {
+            'recent_long_runs': long_run_analysis.get('recent_long_runs', 0),
+            'mp_finish_long_runs_last_4w': long_run_analysis.get('mp_finish_long_runs_last_4w', 0),
+            'longest': long_run_analysis.get('longest'),
+        },
         'marathon': get_marathon_report_info(),
         'generated_at': datetime.now(timezone.utc).isoformat(),
     }

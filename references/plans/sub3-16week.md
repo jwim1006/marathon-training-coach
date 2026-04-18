@@ -1,6 +1,51 @@
-# 16-Week Marathon Training Plan
+# 16-Week Sub-3 Marathon Training Plan
 
-Structured plan based on zone training. Paces below are for sub-3 target — scale proportionally for other goals.
+Structured plan for a sub-3:00 marathon (MP 4:15/km). Scale paces proportionally if target shifts.
+
+## Readiness Gate (check BEFORE prescribing this plan)
+
+Sub-3 is demanding. Before recommending this plan, the bot should confirm:
+
+| Check | Minimum | Red flag |
+|-------|---------|----------|
+| Current weekly volume | 60+ km/week for 4+ weeks | Under 50 km/week → suggest sub-3:15 or base-build first |
+| Recent HM time | ≤ 1:25 (ideally 1:22) | Slower than 1:30 → sub-3 is aspirational this cycle |
+| Recent 10K time | ≤ 38:00 | Slower than 40:00 → fitness gap too wide for 16 weeks |
+| Long run foundation | 25km+ completed in last 6 weeks | Longest run under 20km → extend base 4+ weeks |
+| Injury-free weeks | 6+ | Any injury in last 4 weeks → delay or pick a gentler plan |
+
+If any red flag fires, the bot should surface it explicitly and propose sub-3:15 or an extended base block.
+
+## Phase Playbook (bot cheat sheet)
+
+The bot should tailor weekly recommendations to the current phase:
+
+### Base (weeks 1-4)
+- **Goal:** Aerobic volume, neuromuscular priming
+- **Staples:** Easy Z2 runs, strides 2x/week, short hill sprints
+- **Quality:** 1 tempo + 1 light VO2 session
+- **Long run:** Builds to 2hrs Z2, first MP touch in week 4
+- **Bot flags:** Too much Z3+ too early; missing strides; weekly volume flat
+
+### Build (weeks 5-8)
+- **Goal:** Threshold development, MP introduction
+- **Staples:** Tempo (Z3), threshold intervals (Z4), first race simulation
+- **Quality:** 2-3 quality sessions per week
+- **Long run:** 2.25-2.5hrs with 30min Z3 finish
+- **Bot flags:** 80/20 drifting below 75% easy; no MP work in long runs
+
+### Peak (weeks 9-12)
+- **Goal:** Race-specific fitness, highest volume
+- **Staples:** Long MP intervals (2x25min Z3, 3x20min Z3), race-sim long runs
+- **Quality:** 3 quality sessions per week, volume at peak
+- **Long run:** 2.5hrs with 40-50min Z3 finish; at least 3 MP-finish long runs this block
+- **Bot flags:** Missing race-pace long runs; finish projection > 3:05; consecutive high weeks without a cutback
+
+### Taper (weeks 13-16)
+- **Goal:** Shed fatigue, keep sharpness
+- **Staples:** Short tempos, strides, MP touches
+- **Volume cuts:** Week 13 -20%, Week 14 -40%, Week 15 -60%, Race week minimal
+- **Bot flags:** Volume not dropping; too much Z4/Z5 late in taper; no MP pickups in race week
 
 ## Training Phases
 
