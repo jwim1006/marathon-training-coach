@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "Bash(uv run:*)"
+      "Bash(uv run:*)",
+      "Bash(python -m py_compile scripts/coach_check.py scripts/weekly_report.py scripts/utils.py scripts/athlete_config.py scripts/marathon_status.py)"
     ]
   }
 }

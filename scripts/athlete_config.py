@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Athlete Config — Manage athlete profile and training parameters.
-Stores athlete configuration for zone calculations, TSS, and coaching context.
+Stores athlete configuration for zone calculations and coaching context.
 
 Usage:
   python scripts/athlete_config.py set --max-hr 201 --vt1-hr 175

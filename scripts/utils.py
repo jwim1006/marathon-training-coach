@@ -396,59 +396,6 @@ def fetch_activities(access_token: str, logger: logging.Logger, days: int = 28) 
     return filtered
 
 # ============================================================================
-# TSS / CTL / ATL / TSB (Training Stress Metrics)
-# ============================================================================
-
-def calculate_hr_tss(duration_sec: float, avg_hr: float) -> float:
-    """Calculate heart rate-based Training Stress Score.
-    Formula: (duration_min / 60) * (avg_hr / VT1_HR)^2 * 100
-    Approximates TSS using HR intensity relative to VT1."""
-    if duration_sec <= 0 or avg_hr <= 0 or VT1_HR <= 0:
-        return 0.0
-    duration_min = duration_sec / 60.0
-    intensity_factor = avg_hr / VT1_HR
-    return (duration_min / 60.0) * (intensity_factor ** 2) * 100
-
-
-def calculate_ctl_atl_tsb(activities: List[Dict]) -> Dict[str, Optional[float]]:
-    """Calculate Chronic Training Load (42-day), Acute Training Load (7-day), and TSB.
-    CTL = exponentially weighted average of daily TSS over 42 days (fitness).
-    ATL = exponentially weighted average of daily TSS over 7 days (fatigue).
-    TSB = CTL - ATL (form / freshness)."""
-    if not activities:
-        return {'ctl': None, 'atl': None, 'tsb': None}
-
-    now = datetime.now(timezone.utc)
-    # Build daily TSS array for last 42 days
-    daily_tss = [0.0] * 42
-    for a in activities:
-        try:
-            act_date = datetime.fromisoformat(a.get('start_date', '').replace('Z', '+00:00'))
-            days_ago = (now - act_date).days
-            if 0 <= days_ago < 42:
-                duration_sec = safe_float(a.get('moving_time'), 0)
-                avg_hr = safe_float(a.get('average_heartrate'), 0)
-                if duration_sec > 0 and avg_hr > 0:
-                    daily_tss[days_ago] += calculate_hr_tss(duration_sec, avg_hr)
-        except (ValueError, TypeError):
-            continue
-
-    # Exponentially weighted moving averages
-    ctl = 0.0  # 42-day time constant
-    atl = 0.0  # 7-day time constant
-    # Process from oldest to newest
-    for i in range(41, -1, -1):
-        ctl = ctl + (daily_tss[i] - ctl) * (1.0 / 42.0)
-        atl = atl + (daily_tss[i] - atl) * (1.0 / 7.0)
-
-    tsb = ctl - atl
-    return {
-        'ctl': round(ctl, 1),
-        'atl': round(atl, 1),
-        'tsb': round(tsb, 1),
-    }
-
-# ============================================================================
 # ATHLETE CONFIG
 # ============================================================================
 

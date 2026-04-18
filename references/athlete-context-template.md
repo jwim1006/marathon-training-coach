@@ -26,10 +26,8 @@ Use this template to build `~/.config/marathon-training-coach/athlete_context.md
 
 ## Current Form
 - **Recent weekly volume:** [from weekly_report.py]
-- **ACWR:** [from coach_check.py]
 - **80/20 compliance:** [from coach_check.py]
 - **Longest recent run:** [from marathon_status.py]
-- **Current CTL/ATL/TSB:** [from weekly_report.py]
 
 ## Goals
 - **A race:** [name, date, target time]

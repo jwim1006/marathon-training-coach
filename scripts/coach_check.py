@@ -1,10 +1,9 @@
 #!/usr/bin/env python3
 """
-Training Coach - Daily check for injury risks and training insights.
+Training Coach - Daily check for sub-3 marathon training insights.
 Outputs structured JSON for the AI agent (OpenClaw) to interpret.
 
 Checks:
-- Weekly load spikes (ACWR / Gabbett 2016)
 - 80/20 intensity compliance (Seiler 2010)
 - Recovery gaps
 - Consistency streaks
@@ -24,7 +23,6 @@ from utils import (
     VT1_HR,
     get_hr_zone, is_easy_hr,
     safe_float, safe_int,
-    calculate_ctl_atl_tsb,
     setup_logging,
     load_tokens, fetch_activities,
     get_next_marathon, get_training_phase, get_marathon_report_info,
@@ -34,7 +32,6 @@ from utils import (
 # COACH-SPECIFIC CONFIGURATION
 # ============================================================================
 
-MAX_WEEKLY_JUMP = get_env_float('MAX_WEEKLY_MILEAGE_JUMP', 30.0, 5.0, 100.0)
 MAX_HARD_PERCENT = get_env_float('MAX_HARD_DAY_PERCENTAGE', 25.0, 5.0, 100.0)
 PLANNED_REST_DAYS = get_env_int('PLANNED_REST_DAYS', 2, 0, 7)
 STATE_FILE = os.path.join(CONFIG_DIR, 'coach_state.json')
@@ -86,81 +83,21 @@ class CoachState:
 # ANALYSIS FUNCTIONS
 # ============================================================================
 
-def calculate_acwr(activities: List[Dict]) -> Optional[float]:
-    """ACWR using completed weeks only (Gabbett, 2016)."""
-    now = datetime.now(timezone.utc)
-    monday_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=now.weekday())
-    weekly_loads = []
-
-    for week_offset in range(1, 5):
-        week_start = monday_midnight - timedelta(weeks=week_offset)
-        week_end = week_start + timedelta(days=7)
-        week_km = 0.0
-        for a in activities:
-            try:
-                act_date = datetime.fromisoformat(a.get('start_date', '').replace('Z', '+00:00'))
-                if week_start <= act_date < week_end:
-                    week_km += safe_float(a.get('distance'), 0) / 1000.0
-            except (ValueError, TypeError):
-                continue
-        weekly_loads.append(week_km)
-
-    if not weekly_loads:
-        return None
-    acute = weekly_loads[0]
-    chronic = sum(weekly_loads) / len(weekly_loads)
-    if chronic <= 0:
-        return None
-    return acute / chronic
-
-
 def analyze_weekly_load(activities: List[Dict]) -> Tuple[Optional[Dict], float]:
     if not activities:
         return None, 0.0
 
     now = datetime.now(timezone.utc)
     week_start = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=now.weekday())
-    last_week_start = week_start - timedelta(weeks=1)
 
-    this_week, last_week = [], []
+    this_km = 0.0
     for a in activities:
         try:
             act_date = datetime.fromisoformat(a.get('start_date', '').replace('Z', '+00:00'))
             if act_date >= week_start:
-                this_week.append(a)
-            elif act_date >= last_week_start:
-                last_week.append(a)
+                this_km += safe_float(a.get('distance'), 0) / 1000.0
         except (ValueError, TypeError):
             continue
-
-    this_km = sum(safe_float(a.get('distance'), 0) for a in this_week) / 1000.0
-    last_km = sum(safe_float(a.get('distance'), 0) for a in last_week) / 1000.0
-
-    if last_km == 0:
-        return None, this_km
-
-    change_pct = ((this_km - last_km) / last_km) * 100
-    acwr = calculate_acwr(activities)
-    acwr_str = f" ACWR: {acwr:.2f}." if acwr else ""
-
-    if change_pct > MAX_WEEKLY_JUMP:
-        severity = 'high' if change_pct > 50 or (acwr and acwr > 1.5) else 'medium'
-        rec = "Consider an easy week or cut next week's mileage by 20%."
-        if acwr and acwr > 1.5:
-            rec = (
-                "Your acute:chronic workload ratio is in the high-risk zone (>1.5). "
-                "Research by Gabbett (2016) shows injury risk spikes here. "
-                "Reduce next week's volume by 20-30% and prioritize easy runs."
-            )
-        return {
-            'type': 'load_spike',
-            'severity': severity,
-            'message': (
-                f"Weekly mileage up {change_pct:.0f}% ({last_km:.1f} -> {this_km:.1f} km).{acwr_str} "
-                f"Nielsen et al. (2014) found >30% weekly increases significantly raise injury risk."
-            ),
-            'recommendation': rec
-        }, this_km
 
     return None, this_km
 
@@ -423,9 +360,7 @@ def main() -> int:
     # Run all checks
     alerts = []
 
-    load_alert, weekly_km = analyze_weekly_load(activities)
-    if load_alert and state.should_alert('load'):
-        alerts.append(load_alert)
+    _, weekly_km = analyze_weekly_load(activities)
 
     intensity_alert = analyze_intensity(activities)
     if intensity_alert and state.should_alert('intensity'):
@@ -443,78 +378,10 @@ def main() -> int:
     if marathon_alert and state.should_alert('marathon'):
         alerts.append(marathon_alert)
 
-    # TSB fatigue check (phase-aware)
-    training_stress = calculate_ctl_atl_tsb(activities)
-    if training_stress['tsb'] is not None:
-        tsb = training_stress['tsb']
-        marathon_info = get_marathon_report_info()
-        phase = marathon_info.get('phase', 'pre_training') if marathon_info else 'pre_training'
-
-        # Phase-aware thresholds and recommendations
-        tsb_alert = None
-        if phase in ('peak', 'build'):
-            # Negative TSB is expected during build/peak — only alert at extremes
-            if tsb < -40:
-                tsb_alert = {
-                    'type': 'deep_fatigue',
-                    'severity': 'medium',
-                    'message': (
-                        f"TSB is {tsb:.1f} during {phase} phase. "
-                        f"CTL: {training_stress['ctl']:.1f}, ATL: {training_stress['atl']:.1f}. "
-                        f"Negative TSB is normal during {phase}, but this is on the extreme end."
-                    ),
-                    'recommendation': (
-                        f"You're in {phase} phase — some fatigue is expected and productive. "
-                        "Monitor how you feel: sleep quality, motivation, persistent soreness. "
-                        "If a recovery week is scheduled soon, trust the plan. "
-                        "If not, consider making the next easy day truly easy (Z1 only)."
-                    ),
-                }
-        elif phase == 'taper':
-            # TSB should be rising during taper
-            if tsb < -10:
-                tsb_alert = {
-                    'type': 'deep_fatigue',
-                    'severity': 'high',
-                    'message': (
-                        f"TSB is {tsb:.1f} during taper phase. "
-                        f"CTL: {training_stress['ctl']:.1f}, ATL: {training_stress['atl']:.1f}. "
-                        f"TSB should be rising toward race day (target: +5 to +15)."
-                    ),
-                    'recommendation': (
-                        "You're tapering but fatigue isn't dropping. Cut volume more aggressively "
-                        "and keep all runs at Z1-Z2. Prioritize sleep. "
-                        "TSB needs to reach +5 to +15 by race day for optimal performance."
-                    ),
-                }
-        else:
-            # Base or pre-training — standard threshold
-            if tsb < -20:
-                tsb_alert = {
-                    'type': 'deep_fatigue',
-                    'severity': 'high',
-                    'message': (
-                        f"TSB is {tsb:.1f} (deep fatigue zone). "
-                        f"CTL: {training_stress['ctl']:.1f}, ATL: {training_stress['atl']:.1f}. "
-                        f"Training stress is significantly outpacing fitness adaptation."
-                    ),
-                    'recommendation': (
-                        "Consider a recovery week: reduce volume by 40-50%, skip Z4/Z5 sessions, "
-                        "and prioritize sleep. TSB should return above -10 before resuming hard training."
-                    ),
-                }
-
-        if tsb_alert and state.should_alert('fatigue'):
-            alerts.append(tsb_alert)
-
-    acwr = calculate_acwr(activities)
-
     result = {
         'weekly_km': round(weekly_km, 1),
-        'acwr': round(acwr, 2) if acwr else None,
-        'training_stress': training_stress,
         'alerts': alerts,
-        'checks_run': ['load', 'intensity', 'recovery', 'streak', 'marathon'],
+        'checks_run': ['intensity', 'recovery', 'streak', 'marathon'],
         'generated_at': datetime.now(timezone.utc).isoformat(),
     }
 

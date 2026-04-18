@@ -28,8 +28,6 @@ Your body adapts to stress gradually. Sudden spikes in volume override your body
 
 **The science:** While Buist et al. (2010) found that a rigid 10% rule didn't significantly reduce injuries in novice runners compared to a standard program, the underlying principle is well-supported. Nielsen et al. (2014) demonstrated in a large prospective study (n=874) that runners who increased weekly distance by more than 30% had significantly higher injury rates. The practical guideline remains: gradual progression with built-in recovery weeks is safer than erratic volume changes.
 
-> **Acute:Chronic Workload Ratio (ACWR):** Gabbett (2016) introduced the concept that injury risk is highest when the ratio of acute (1-week) to chronic (4-week average) workload exceeds 1.5. This coach monitors for spikes above 30%, which maps to the high-risk zone.
-
 ## Warning Signs of Overtraining
 
 ### Yellow Flags (monitor closely)

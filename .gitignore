@@ -5,3 +5,27 @@ __pycache__/
 .claude
 PLAN.md
 endurance-coach-skill/
+
+# Frontend / landing page
+landing-page/
+node_modules/
+dist/
+build/
+.next/
+out/
+.nuxt/
+.svelte-kit/
+.vite/
+.cache/
+.parcel-cache/
+.turbo/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+.yarn/
+.DS_Store
+.vercel
+.netlify

@@ -1,53 +1,39 @@
 ---
 name: marathon-training-coach
 description: |
-  AI running coach that prevents injuries by monitoring your Strava training load daily.
-  Detects dangerous mileage spikes, intensity imbalances, and recovery gaps using evidence-based
-  sports science (80/20 rule, acute:chronic workload ratio), then outputs structured JSON
-  for the AI agent to interpret and deliver smart coaching advice.
-
-  Marathon-specific: manages multiple upcoming races, determines your training phase
-  (base/build/peak/taper) on a 16-week plan, assesses race readiness with pace estimates,
-  long run analysis, and taper detection.
+  AI running coach dedicated to one goal: a sub-3 marathon. Monitors Strava daily,
+  tracks 80/20 intensity balance, long-run progression, training phase, and race-pace
+  readiness, then outputs structured JSON for the AI agent to deliver conversational
+  coaching advice.
 
   Use when:
-  - "Am I overtraining?" — Analyze weekly mileage and intensity for injury risk
-  - "Check my training load" — Run a daily analysis of your Strava activities
-  - "How's my marathon prep going?" — Assess readiness for your next race
-  - "Add a race" — Register an upcoming marathon with target time and training start date
+  - "How's my sub-3 prep going?" — Assess readiness for the target race
+  - "Check my training" — Run a daily analysis of your Strava activities
+  - "Add a race" — Register the goal marathon with target time and training start date
   - "What phase am I in?" — Determine base/build/peak/taper based on weeks to race
-  - "Is my running mileage safe?" — Calculate acute:chronic workload ratio (ACWR)
-  - "Generate a weekly report" — 4-week trends, ACWR, intensity distribution
+  - "Generate a weekly report" — 4-week volume and intensity trends
   - Monitoring heart rate to ensure easy days are actually easy (80/20 compliance)
   - Tracking recovery gaps and consistency streaks
   - Estimating marathon finish time from recent Z3/Z4 paces
 
-  Scripts output structured JSON for the AI agent to interpret. The agent reads the JSON
-  and provides personalized, conversational coaching advice to the runner.
+  Scripts output structured JSON for the AI agent to interpret and deliver
+  personalized, conversational coaching advice to the runner.
 
   Security: No hardcoded secrets, input validation, log redaction, secure token storage
   (XDG, 0600 permissions), rate limiting, 30s request timeouts, activity caching.
 homepage: https://developers.strava.com/docs/reference/
-metadata: {"clawdbot":{"emoji":"🏃","tags":["fitness","strava","running","injury-prevention","training","alerts","discord","slack","telegram","health","marathon","overtraining","recovery","80-20-rule","heart-rate","coaching","endurance","race-readiness","taper","ACWR"],"requires":{"env":["STRAVA_CLIENT_ID","STRAVA_CLIENT_SECRET"]}}}
+metadata: {"clawdbot":{"emoji":"🏃","tags":["fitness","strava","running","marathon","sub3","training","alerts","80-20-rule","heart-rate","coaching","endurance","race-readiness","taper"],"requires":{"env":["STRAVA_CLIENT_ID","STRAVA_CLIENT_SECRET"]}}}
 ---
 
 # Marathon Training Coach
 
-Evidence-based AI training partner that catches injury risk before you feel it — and coaches you through marathon prep.
+Evidence-based AI training partner dedicated to one goal: a **sub-3 marathon**.
 
-## Why This Matters
-
-Most running injuries follow the same pattern: too much, too soon. Nielsen et al. (2014) found that runners who increase weekly distance by more than 30% have significantly higher injury rates. By the time you feel pain, the damage is weeks old.
-
-This coach watches your Strava data daily and alerts you **before** problems become injuries — so you stay consistent instead of sidelined.
-
-Built on the **80/20 polarized training model** (Seiler, 2010; Stoggl & Sperlich, 2014) — the same approach used by elite endurance coaches to build durable athletes who train smarter, not just harder.
+Built on the **80/20 polarized training model** (Seiler, 2010; Stoggl & Sperlich, 2014) — the same approach elite endurance coaches use to build athletes who train smarter, not just harder.
 
 ## What You Get
 
 ### Daily Monitoring (`coach_check.py`)
-- **ACWR Monitoring** — Tracks your acute:chronic workload ratio (Gabbett, 2016). ACWR > 1.5 = high injury risk
-- **Acute Load Alerts** — Weekly mileage up 30%+? You'll know before your knees do
 - **80/20 Intensity Checks** — VT1-anchored HR zones detect too many hard days
 - **Recovery Nudges** — Extended gaps that might affect your training adaptations
 - **Consistency Streaks** — Milestone celebrations at 7, 14, 30, 60, 100 days
@@ -55,7 +41,6 @@ Built on the **80/20 polarized training model** (Seiler, 2010; Stoggl & Sperlich
 
 ### Weekly Reports (`weekly_report.py`)
 - 4-week volume trends with week-over-week comparisons
-- ACWR with risk zone classification (undertraining / sweet spot / caution / high risk)
 - Intensity distribution (easy/hard split) vs 80/20 target with zone breakdown
 - Marathon countdown with phase and plan week
 
@@ -77,29 +62,9 @@ Built on the **80/20 polarized training model** (Seiler, 2010; Stoggl & Sperlich
 
 **CRITICAL: Always read the JSON values directly. Never recalculate metrics yourself — use the exact numbers from the script output.**
 
-### TSB in Context of Training Phase
-
-TSB (Training Stress Balance) must be interpreted relative to the training phase. Negative TSB is not always bad:
-
-| Phase | Expected TSB | What It Means |
-|-------|-------------|---------------|
-| **Base** | -5 to -15 | Moderate fatigue from building volume |
-| **Build** | -15 to -30 | Higher fatigue as intensity increases — normal and productive |
-| **Peak** | -20 to -40 | Highest fatigue of the cycle — this is expected and necessary |
-| **Taper** | Rising toward +5 to +15 | Fatigue should be dropping as volume decreases |
-| **Race day** | +5 to +15 | Fresh but fit — the goal of tapering |
-
-**Do NOT tell an athlete in peak phase to cut volume 40-50% just because TSB is negative.** During peak, negative TSB means training is working. Only recommend backing off if:
-- TSB is extreme (below -40 in peak, below -20 in base)
-- The athlete reports feeling terrible (sleep issues, persistent soreness, no motivation)
-- ACWR is also in the high-risk zone (> 1.5)
-- It has been more than 3 weeks since the last recovery week
-
-The alerts from `coach_check.py` are already phase-aware — present them as-is without adding your own interpretation.
-
 ### Race Pace Estimates
 
-The script provides `estimated_finish_time` — use this value directly. Do not recalculate from pace values.
+The script provides `estimated_finish_time` — use this value directly. Do not recalculate from pace values. The target is **sub-3:00:00** (4:15/km) — flag any projection slower than that and suggest phase-appropriate adjustments.
 
 ## Athlete Setup
 
@@ -114,7 +79,7 @@ python3 scripts/athlete_config.py get
   python3 scripts/athlete_config.py set --max-hr 201 --vt1-hr 175
   ```
 - Optionally collect more: `--years-running`, `--peak-weekly-km`, `--long-run-day`, `--rest-days`, `--hours-per-week`, `--race-prs`, `--injury-history`
-- All zone calculations, TSS, and 80/20 checks depend on these HR values being correct.
+- All zone calculations and 80/20 checks depend on these HR values being correct.
 
 ### Step 2: Athlete Context (Coaching Profile)
 Check: does `~/.config/marathon-training-coach/athlete_context.md` exist?
@@ -177,20 +142,14 @@ Tokens are stored in `~/.config/marathon-training-coach/strava_tokens.json` with
 ### 2. Add a Race
 
 ```bash
-# Register your marathon
+# Register your sub-3 goal race
 python3 scripts/marathon_config.py set \
   --race-name "Taipei Marathon" \
   --race-date 2026-10-18 \
-  --target-time 3:30:00 \
+  --target-time 2:59:00 \
   --start-date 2026-06-28
 
-# Add another race
-python3 scripts/marathon_config.py set \
-  --race-name "Fuji Marathon" \
-  --race-date 2026-12-06 \
-  --target-time 3:25:00
-
-# List all races
+# List races
 python3 scripts/marathon_config.py list
 
 # Check next upcoming race
@@ -213,9 +172,6 @@ python3 scripts/marathon_status.py
 
 # Machine-readable JSON output
 python3 scripts/marathon_status.py --json
-
-# Assess a specific race
-python3 scripts/marathon_status.py --race-name "Fuji Marathon"
 ```
 
 All scripts output structured JSON for the AI agent to interpret and deliver coaching advice.
@@ -234,7 +190,7 @@ All scripts output structured JSON for the AI agent to interpret and deliver coa
 
 ### Athlete Config (Required)
 
-HR thresholds and athlete data are stored in `~/.config/marathon-training-coach/athlete_config.json` via `athlete_config.py`. MAX_HR and VT1_HR are **required** — all zone calculations, TSS, and 80/20 checks depend on them.
+HR thresholds and athlete data are stored in `~/.config/marathon-training-coach/athlete_config.json` via `athlete_config.py`. MAX_HR and VT1_HR are **required** — all zone calculations and 80/20 checks depend on them.
 
 ```bash
 # Required: set HR thresholds
@@ -258,7 +214,6 @@ STRAVA_CLIENT_ID=your_id
 STRAVA_CLIENT_SECRET=your_secret
 
 # Training thresholds (optional - sensible defaults)
-MAX_WEEKLY_MILEAGE_JUMP=30      # 5-100%, default: 30
 MAX_HARD_DAY_PERCENTAGE=25      # 5-100%, default: 25
 PLANNED_REST_DAYS=2             # 0-7, default: 2
 
@@ -309,14 +264,7 @@ VERBOSE=false
 ```json
 {
   "weekly_km": 42.3,
-  "acwr": 1.15,
   "alerts": [
-    {
-      "type": "load_spike",
-      "severity": "medium",
-      "message": "Weekly mileage up 35% (31.3 -> 42.3 km). ACWR: 1.15.",
-      "recommendation": "Consider an easy week or cut next week's mileage by 20%."
-    },
     {
       "type": "marathon_alignment",
       "severity": "medium",
@@ -324,7 +272,7 @@ VERBOSE=false
       "recommendation": "Schedule a long run this weekend with the last portion at marathon pace (Z3)."
     }
   ],
-  "checks_run": ["load", "intensity", "recovery", "streak", "marathon"]
+  "checks_run": ["intensity", "recovery", "streak", "marathon", "fatigue"]
 }
 ```
 
@@ -335,8 +283,8 @@ VERBOSE=false
   "race": {
     "name": "Taipei Marathon",
     "date": "2026-10-18",
-    "target_time": "3:30:00",
-    "target_pace": "4:58/km",
+    "target_time": "2:59:00",
+    "target_pace": "4:15/km",
     "days_to_race": 85,
     "weeks_to_race": 12.1
   },
@@ -353,15 +301,15 @@ VERBOSE=false
   },
   "race_pace_readiness": {
     "marathon_pace_estimate": {
-      "pace_min_km": "5:02",
-      "estimated_finish_time": "3:33:15",
+      "pace_min_km": "4:20",
+      "estimated_finish_time": "3:02:45",
       "based_on_runs": 4
     }
   },
   "taper_detection": {"is_tapering": false},
   "recommendations": [
     "Add threshold (Z4) sessions and race simulations.",
-    "Pace is close: Z3 pace projects 3:33:15 vs 3:30:00 target."
+    "Pace gap: Z3 projects 3:02:45 vs 2:59:00 target — sharpen threshold."
   ]
 }
 ```
@@ -369,10 +317,8 @@ VERBOSE=false
 ## Training Philosophy (Evidence-Based)
 
 1. **Polarized Training** — 80% easy, 20% hard (Seiler & Kjerland, 2006; Stoggl & Sperlich, 2014)
-2. **ACWR Sweet Spot** — Keep acute:chronic workload ratio between 0.8-1.3 (Gabbett, 2016)
-3. **Progressive Overload** — Gradual increases; >30% weekly spikes raise injury risk (Nielsen et al., 2014)
-4. **Consistency > Intensity** — Frequency drives mitochondrial and capillary adaptation (Holloszy & Coyle, 1984)
-5. **Strength Training** — Reduces sports injuries by 68% and overuse injuries by ~50% (Lauersen et al., 2014)
+2. **Consistency > Intensity** — Frequency drives mitochondrial and capillary adaptation (Holloszy & Coyle, 1984)
+3. **Strength Training** — Reduces sports injuries by 68% and overuse injuries by ~50% (Lauersen et al., 2014)
 
 See `references/training-principles.md` for the full guide with 30+ scientific references.
 
@@ -401,10 +347,10 @@ When an athlete asks for a training plan:
 ## Files
 
 - `scripts/auth.py` — Strava OAuth setup (tokens stored in XDG config dir)
-- `scripts/utils.py` — Shared utilities: HR zones, Strava API, activity caching, TSS/CTL/ATL/TSB, config loading
+- `scripts/utils.py` — Shared utilities: HR zones, Strava API, activity caching, config loading
 - `scripts/athlete_config.py` — CLI to manage athlete HR thresholds and profile (set/get/remove)
-- `scripts/coach_check.py` — Daily training analysis: load spikes, 80/20, recovery, streaks, marathon alignment, TSB fatigue
-- `scripts/weekly_report.py` — Weekly summary: 4-week trends, ACWR, intensity distribution, TSS, CTL/ATL/TSB
+- `scripts/coach_check.py` — Daily training analysis: 80/20, recovery, streaks, marathon alignment
+- `scripts/weekly_report.py` — Weekly summary: 4-week trends, intensity distribution
 - `scripts/marathon_config.py` — CLI to manage upcoming races (set/get/list/remove)
 - `scripts/marathon_status.py` — Race readiness assessment: phase, long runs, pace estimates, taper, strengths/limiters
 - `scripts/workout_notes.py` — Persist and analyze post-workout check-in notes (add/list/patterns)
