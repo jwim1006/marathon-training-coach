@@ -119,6 +119,10 @@ def cmd_set(args):
         print(f"Error: Invalid start date format '{args.start_date}'. Use YYYY-MM-DD.")
         return 1
 
+    if args.finish_time and not validate_time(args.finish_time):
+        print(f"Error: Invalid finish time format '{args.finish_time}'. Use H:MM:SS.")
+        return 1
+
     marathons = load_marathons()
 
     # Check if updating existing
@@ -134,6 +138,18 @@ def cmd_set(args):
             existing['distance_km'] = args.distance
         if args.notes:
             existing['notes'] = args.notes
+        if args.finish_time:
+            existing['finish_time'] = args.finish_time
+            existing['finish_seconds'] = parse_target_seconds(args.finish_time)
+            existing['status'] = 'completed'
+            # Calculate avg pace
+            dist = existing.get('distance_km', 42.195)
+            pace_sec = parse_target_seconds(args.finish_time) / dist
+            pace_min = int(pace_sec // 60)
+            pace_s = int(pace_sec % 60)
+            existing['avg_pace_min_km'] = f"{pace_min}:{pace_s:02d}"
+            if args.avg_hr:
+                existing['avg_hr'] = args.avg_hr
         existing['updated_at'] = datetime.now().isoformat()
         print(f"Updated: {args.race_name}")
     else:
@@ -150,6 +166,17 @@ def cmd_set(args):
             marathon['target_seconds'] = parse_target_seconds(args.target_time)
         if args.notes:
             marathon['notes'] = args.notes
+        if args.finish_time:
+            marathon['finish_time'] = args.finish_time
+            marathon['finish_seconds'] = parse_target_seconds(args.finish_time)
+            marathon['status'] = 'completed'
+            dist = args.distance or 42.195
+            pace_sec = parse_target_seconds(args.finish_time) / dist
+            pace_min = int(pace_sec // 60)
+            pace_s = int(pace_sec % 60)
+            marathon['avg_pace_min_km'] = f"{pace_min}:{pace_s:02d}"
+            if args.avg_hr:
+                marathon['avg_hr'] = args.avg_hr
         marathons.append(marathon)
         print(f"Added: {args.race_name}")
 
@@ -170,6 +197,8 @@ def cmd_set(args):
         pace_min = int(pace_sec // 60)
         pace_s = int(pace_sec % 60)
         print(f"  Target: {args.target_time} (pace: {pace_min}:{pace_s:02d}/km)")
+    if args.finish_time:
+        print(f"  Finish: {args.finish_time}")
     print(f"  Distance: {args.distance or 42.195} km")
     return 0
 
@@ -246,6 +275,8 @@ def main():
     set_parser.add_argument('--target-time', help='Target finish time (H:MM:SS)')
     set_parser.add_argument('--distance', type=float, help='Distance in km (default: 42.195)')
     set_parser.add_argument('--notes', help='Additional notes')
+    set_parser.add_argument('--finish-time', help='Finish time for completed race (H:MM:SS)')
+    set_parser.add_argument('--avg-hr', type=float, help='Average heart rate for completed race')
 
     # list
     subparsers.add_parser('list', help='List all marathons')
