@@ -26,6 +26,7 @@ from utils import (
     setup_logging,
     load_tokens, fetch_activities,
     get_next_marathon, get_training_phase, get_marathon_report_info,
+    is_strength_activity, summarize_strength, get_strength_target_per_week,
 )
 from marathon_status import estimate_race_pace, analyze_long_runs
 
@@ -339,6 +340,70 @@ def check_marathon_alignment(activities: List[Dict]) -> Optional[Dict]:
     return None
 
 
+def check_strength_compliance(activities: List[Dict], target: int = 2) -> Optional[Dict]:
+    """Strength-training compliance check (Lauersen et al. 2014: ~68% reduction
+    in sports injury, ~50% in overuse injury, with regular strength training).
+
+    Tracked separately from running load — does not affect TSS / 80-20.
+    """
+    if target <= 0:
+        return None
+
+    now = datetime.now(timezone.utc)
+    cutoff_14d = now - timedelta(days=14)
+    cutoff_7d = now - timedelta(days=7)
+    cutoff_14_to_7 = (cutoff_14d, cutoff_7d)
+
+    count_14d = 0
+    count_7d = 0
+    count_prev_7d = 0
+    for a in activities:
+        if not is_strength_activity(a):
+            continue
+        try:
+            act_date = datetime.fromisoformat(a.get('start_date', '').replace('Z', '+00:00'))
+        except (ValueError, TypeError):
+            continue
+        if act_date >= cutoff_14d:
+            count_14d += 1
+        if act_date >= cutoff_7d:
+            count_7d += 1
+        elif cutoff_14_to_7[0] <= act_date < cutoff_14_to_7[1]:
+            count_prev_7d += 1
+
+    if count_14d == 0:
+        return {
+            'type': 'strength_compliance',
+            'severity': 'high',
+            'message': (
+                f"No strength sessions detected in the last 14 days "
+                f"(target: {target}/week)."
+            ),
+            'recommendation': (
+                "Add 2 short strength sessions per week — Lauersen et al. (2014) "
+                "found this reduces sports injury risk by ~68% and overuse injury "
+                "by ~50%. Even 20-30 min of compound lifts (squat, deadlift, "
+                "single-leg work) is enough at this stage."
+            ),
+        }
+
+    if count_7d == 0 and count_prev_7d >= 1:
+        return {
+            'type': 'strength_compliance',
+            'severity': 'low',
+            'message': (
+                f"No strength sessions this week (target: {target}/week). "
+                f"Last week had {count_prev_7d}."
+            ),
+            'recommendation': (
+                "Slot in a short strength session before the week ends to keep "
+                "injury-prevention adaptations active."
+            ),
+        }
+
+    return None
+
+
 # ============================================================================
 # MAIN
 # ============================================================================
@@ -379,6 +444,11 @@ def main() -> int:
     if marathon_alert and state.should_alert('marathon'):
         alerts.append(marathon_alert)
 
+    strength_target = get_strength_target_per_week()
+    strength_alert = check_strength_compliance(activities, target=strength_target)
+    if strength_alert and state.should_alert('strength'):
+        alerts.append(strength_alert)
+
     # Race pace projection + peak-phase MP-long-run check
     pace_estimate = estimate_race_pace(activities)
     long_run_analysis = analyze_long_runs(activities)
@@ -408,8 +478,9 @@ def main() -> int:
             'mp_finish_long_runs_last_4w': long_run_analysis.get('mp_finish_long_runs_last_4w', 0),
             'longest': long_run_analysis.get('longest'),
         },
+        'strength_summary': summarize_strength(activities, target_per_week=strength_target, weeks=4),
         'alerts': alerts,
-        'checks_run': ['intensity', 'recovery', 'streak', 'marathon', 'mp_long_run_gap'],
+        'checks_run': ['intensity', 'recovery', 'streak', 'marathon', 'mp_long_run_gap', 'strength'],
         'generated_at': datetime.now(timezone.utc).isoformat(),
     }
 

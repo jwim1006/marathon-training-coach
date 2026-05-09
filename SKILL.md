@@ -38,6 +38,18 @@ Built on the **80/20 polarized training model** (Seiler, 2010; Stoggl & Sperlich
 - **Recovery Nudges** — Extended gaps that might affect your training adaptations
 - **Consistency Streaks** — Milestone celebrations at 7, 14, 30, 60, 100 days
 - **Marathon Phase Alignment** — Warns if your training doesn't match your current phase (e.g., not tapering when you should be)
+- **Strength Compliance** — Alerts if you've slipped from the 2×/week strength target (Lauersen et al. 2014)
+
+### Strength Tracking
+
+Tracks frequency only — the goal is **injury-prevention compliance**, not lift programming.
+
+- **Target:** 2 strength sessions per week (configurable via `athlete_config.py --strength-target-per-week`, range 0-7)
+- **What counts:** Strava activities with `sport_type` of `WeightTraining`, `Crossfit`, or `Workout`. The last is Strava's generic catch-all and is flagged as `ambiguous_count` in the JSON so the agent can hedge wording when most matches come from that bucket.
+- **No lift detail:** Strava doesn't surface sets, reps, or weights. Only session frequency and duration are tracked.
+- **Separate from running load:** Strength sessions do **NOT** contribute to TSS, CTL, ATL, TSB, ACWR, or 80-20 calculations. They are a standalone compliance counter.
+- **Output:** Every script (`coach_check.py`, `weekly_report.py`, `marathon_status.py`) emits a `strength_summary` block with this-week count, 4-week count, sessions/week average, last session date, and Monday-anchored weekly breakdown.
+- **Alerting:** `coach_check.py` fires `strength_compliance` (high severity) when no strength session in the last 14 days, or (low severity) when this week is empty after a session last week.
 
 ### Weekly Reports (`weekly_report.py`)
 - 4-week volume trends with week-over-week comparisons
@@ -363,7 +375,22 @@ VERBOSE=false
       "recommendation": "Schedule a long run this weekend with the last portion at marathon pace (Z3)."
     }
   ],
-  "checks_run": ["intensity", "recovery", "streak", "marathon", "fatigue"]
+  "strength_summary": {
+    "target_per_week": 2,
+    "this_week_count": 1,
+    "last_4w_count": 6,
+    "last_4w_ambiguous_count": 1,
+    "sessions_per_week_avg": 1.5,
+    "avg_duration_min": 32.4,
+    "last_session_date": "2026-05-07",
+    "weekly_breakdown": [
+      {"label": "13/04-19/04", "week_start": "2026-04-13", "count": 2, "ambiguous_count": 0},
+      {"label": "20/04-26/04", "week_start": "2026-04-20", "count": 2, "ambiguous_count": 0},
+      {"label": "27/04-03/05", "week_start": "2026-04-27", "count": 1, "ambiguous_count": 1},
+      {"label": "04/05-10/05", "week_start": "2026-05-04", "count": 1, "ambiguous_count": 0}
+    ]
+  },
+  "checks_run": ["intensity", "recovery", "streak", "marathon", "mp_long_run_gap", "strength"]
 }
 ```
 
@@ -483,7 +510,7 @@ When an athlete asks for a training plan:
 ## Files
 
 - `scripts/auth.py` — Strava OAuth setup (tokens stored in XDG config dir)
-- `scripts/utils.py` — Shared utilities: HR zones, Strava API, activity caching, config loading
+- `scripts/utils.py` — Shared utilities: HR zones, Strava API, activity caching, config loading, `is_strength_activity` / `summarize_strength` helpers
 - `scripts/athlete_config.py` — CLI to manage athlete HR thresholds and profile (set/get/remove)
 - `scripts/coach_check.py` — Daily training analysis: 80/20, recovery, streaks, marathon alignment
 - `scripts/weekly_report.py` — Weekly summary: 4-week trends, intensity distribution

@@ -17,6 +17,7 @@ from utils import (
     setup_logging,
     load_tokens, fetch_activities,
     get_marathon_report_info,
+    summarize_strength, get_strength_target_per_week,
 )
 from marathon_status import estimate_race_pace, analyze_long_runs
 
@@ -138,6 +139,9 @@ def generate_report(activities: List[Dict]) -> Dict:
             'mp_finish_long_runs_last_4w': long_run_analysis.get('mp_finish_long_runs_last_4w', 0),
             'longest': long_run_analysis.get('longest'),
         },
+        'strength_summary': summarize_strength(
+            activities, target_per_week=get_strength_target_per_week(), weeks=4
+        ),
         'marathon': get_marathon_report_info(),
         'generated_at': datetime.now(timezone.utc).isoformat(),
     }

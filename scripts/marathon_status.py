@@ -23,6 +23,7 @@ from utils import (
     load_tokens, fetch_activities,
     load_marathons, get_next_marathon, find_marathon,
     get_training_phase, get_plan_week, PHASES,
+    summarize_strength, get_strength_target_per_week,
 )
 
 logger = setup_logging('marathon_status', os.path.join(CONFIG_DIR, 'marathon_status.log'))
@@ -551,6 +552,9 @@ def assess_marathon_readiness(marathon: Dict, activities: List[Dict]) -> Dict:
         'race_pace_readiness': pace_estimate,
         'taper_detection': taper_info,
         'strengths_limiters': strengths_limiters,
+        'strength_summary': summarize_strength(
+            activities, target_per_week=get_strength_target_per_week(), weeks=4
+        ),
         'recommendations': recommendations,
         'generated_at': datetime.now(timezone.utc).isoformat(),
     }

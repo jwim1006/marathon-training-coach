@@ -456,6 +456,101 @@ def load_athlete_config() -> Dict:
         pass
     return {}
 
+
+def get_strength_target_per_week(default: int = 2) -> int:
+    """Read strength_target_per_week from athlete config (default 2, range 0-7)."""
+    cfg = load_athlete_config()
+    val = cfg.get('strength_target_per_week', default)
+    try:
+        val = int(val)
+    except (TypeError, ValueError):
+        return default
+    return max(0, min(7, val))
+
+# ============================================================================
+# STRENGTH ACTIVITY HELPERS
+# ============================================================================
+
+# Strava activity types treated as strength / cross-training sessions.
+# 'Workout' is a generic catch-all in Strava — included but flagged as ambiguous
+# in summarize_strength so consumers can hedge wording.
+STRENGTH_ACTIVITY_TYPES = {'WeightTraining', 'Crossfit', 'Workout'}
+STRENGTH_AMBIGUOUS_TYPES = {'Workout'}
+
+
+def is_strength_activity(activity: Dict) -> bool:
+    """True if Strava activity is a strength / cross-training session."""
+    t = activity.get('sport_type') or activity.get('type')
+    return t in STRENGTH_ACTIVITY_TYPES
+
+
+def summarize_strength(activities: List[Dict], target_per_week: int = 2,
+                       weeks: int = 4) -> Dict:
+    """Strength-session compliance summary.
+
+    Tracked separately from running load — does NOT contribute to TSS, CTL,
+    ATL, TSB, ACWR, or 80-20 calculations.
+
+    Week boundaries mirror weekly_report.calculate_weeks: Monday-anchored UTC
+    midnight, going backwards from current week.
+    """
+    now = datetime.now(timezone.utc)
+    monday_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=now.weekday())
+
+    weekly_breakdown = []
+    total_sessions = 0
+    total_ambiguous = 0
+    total_duration_s = 0.0
+    last_session_date = None
+
+    for i in range(weeks):
+        week_start = monday_midnight - timedelta(weeks=i)
+        week_end = week_start + timedelta(days=7)
+        count = 0
+        ambiguous_count = 0
+        for a in activities:
+            if not is_strength_activity(a):
+                continue
+            try:
+                act_date = datetime.fromisoformat(a.get('start_date', '').replace('Z', '+00:00'))
+            except (ValueError, TypeError):
+                continue
+            if not (week_start <= act_date < week_end):
+                continue
+            count += 1
+            t = a.get('sport_type') or a.get('type')
+            if t in STRENGTH_AMBIGUOUS_TYPES:
+                ambiguous_count += 1
+            total_duration_s += safe_float(a.get('moving_time'), 0)
+            iso = act_date.date().isoformat()
+            if last_session_date is None or iso > last_session_date:
+                last_session_date = iso
+        total_sessions += count
+        total_ambiguous += ambiguous_count
+        label = f"{week_start.strftime('%d/%m')}-{(week_end - timedelta(days=1)).strftime('%d/%m')}"
+        weekly_breakdown.append({
+            'label': label,
+            'week_start': week_start.date().isoformat(),
+            'count': count,
+            'ambiguous_count': ambiguous_count,
+        })
+
+    weekly_breakdown.reverse()
+    this_week_count = weekly_breakdown[-1]['count'] if weekly_breakdown else 0
+    avg_duration_min = round((total_duration_s / 60.0) / total_sessions, 1) if total_sessions else 0.0
+    sessions_per_week_avg = round(total_sessions / weeks, 2) if weeks else 0.0
+
+    return {
+        'target_per_week': target_per_week,
+        'this_week_count': this_week_count,
+        'last_4w_count': total_sessions,
+        'last_4w_ambiguous_count': total_ambiguous,
+        'sessions_per_week_avg': sessions_per_week_avg,
+        'avg_duration_min': avg_duration_min,
+        'last_session_date': last_session_date,
+        'weekly_breakdown': weekly_breakdown,
+    }
+
 # ============================================================================
 # MARATHON CONFIG
 # ============================================================================

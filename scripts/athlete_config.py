@@ -135,6 +135,12 @@ def cmd_set(args):
         injuries = [i.strip() for i in args.injury_history.split(',')]
         updates['injury_history'] = injuries
 
+    if args.strength_target_per_week is not None:
+        if not (0 <= args.strength_target_per_week <= 7):
+            print(f"Error: strength_target_per_week must be between 0 and 7, got {args.strength_target_per_week}")
+            return 1
+        updates['strength_target_per_week'] = args.strength_target_per_week
+
     if not updates:
         print("Error: No fields to set. Provide at least one field.")
         return 1
@@ -194,6 +200,7 @@ def main():
     set_parser.add_argument('--rest-days', help='Rest days, comma-separated (e.g., monday,friday)')
     set_parser.add_argument('--race-prs', help='Race PRs as name=time pairs (e.g., "marathon=3:15:00,10k=42:30")')
     set_parser.add_argument('--injury-history', help='Injury history, comma-separated (e.g., "IT band 2024,shin splints 2023")')
+    set_parser.add_argument('--strength-target-per-week', type=int, help='Target strength sessions per week (0-7, default 2)')
 
     # get
     subparsers.add_parser('get', help='Show current athlete config')
