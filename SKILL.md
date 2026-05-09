@@ -45,7 +45,8 @@ Built on the **80/20 polarized training model** (Seiler, 2010; Stoggl & Sperlich
 Tracks frequency only — the goal is **injury-prevention compliance**, not lift programming.
 
 - **Target:** 2 strength sessions per week (configurable via `athlete_config.py --strength-target-per-week`, range 0-7)
-- **What counts:** Strava activities with `sport_type` of `WeightTraining`, `Crossfit`, or `Workout`. The last is Strava's generic catch-all and is flagged as `ambiguous_count` in the JSON so the agent can hedge wording when most matches come from that bucket.
+- **Minimum duration:** Sessions shorter than 15 min are excluded (configurable via `--strength-min-duration-min`, range 5-60). Filters out accidental short Strava entries (warm-ups, mobility, abandoned sessions).
+- **What counts:** Strava activities with `sport_type` of `WeightTraining`, `Crossfit`, or `Workout` that meet the minimum duration. The last is Strava's generic catch-all and is flagged as `ambiguous_count` in the JSON so the agent can hedge wording when most matches come from that bucket.
 - **No lift detail:** Strava doesn't surface sets, reps, or weights. Only session frequency and duration are tracked.
 - **Separate from running load:** Strength sessions do **NOT** contribute to TSS, CTL, ATL, TSB, ACWR, or 80-20 calculations. They are a standalone compliance counter.
 - **Output:** Every script (`coach_check.py`, `weekly_report.py`, `marathon_status.py`) emits a `strength_summary` block with this-week count, 4-week count, sessions/week average, last session date, and Monday-anchored weekly breakdown.
@@ -377,6 +378,7 @@ VERBOSE=false
   ],
   "strength_summary": {
     "target_per_week": 2,
+    "min_duration_min": 15,
     "this_week_count": 1,
     "last_4w_count": 6,
     "last_4w_ambiguous_count": 1,

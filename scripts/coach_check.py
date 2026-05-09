@@ -26,7 +26,8 @@ from utils import (
     setup_logging,
     load_tokens, fetch_activities,
     get_next_marathon, get_training_phase, get_marathon_report_info,
-    is_strength_activity, summarize_strength, get_strength_target_per_week,
+    is_strength_activity, qualifies_as_strength, summarize_strength,
+    get_strength_target_per_week, get_strength_min_duration_min,
 )
 from marathon_status import estimate_race_pace, analyze_long_runs
 
@@ -340,7 +341,8 @@ def check_marathon_alignment(activities: List[Dict]) -> Optional[Dict]:
     return None
 
 
-def check_strength_compliance(activities: List[Dict], target: int = 2) -> Optional[Dict]:
+def check_strength_compliance(activities: List[Dict], target: int = 2,
+                              min_duration_min: Optional[int] = None) -> Optional[Dict]:
     """Strength-training compliance check (Lauersen et al. 2014: ~68% reduction
     in sports injury, ~50% in overuse injury, with regular strength training).
 
@@ -348,6 +350,9 @@ def check_strength_compliance(activities: List[Dict], target: int = 2) -> Option
     """
     if target <= 0:
         return None
+
+    if min_duration_min is None:
+        min_duration_min = get_strength_min_duration_min()
 
     now = datetime.now(timezone.utc)
     cutoff_14d = now - timedelta(days=14)
@@ -358,7 +363,7 @@ def check_strength_compliance(activities: List[Dict], target: int = 2) -> Option
     count_7d = 0
     count_prev_7d = 0
     for a in activities:
-        if not is_strength_activity(a):
+        if not qualifies_as_strength(a, min_duration_min):
             continue
         try:
             act_date = datetime.fromisoformat(a.get('start_date', '').replace('Z', '+00:00'))

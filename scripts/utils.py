@@ -467,6 +467,21 @@ def get_strength_target_per_week(default: int = 2) -> int:
         return default
     return max(0, min(7, val))
 
+
+def get_strength_min_duration_min(default: int = 15) -> int:
+    """Read strength_min_duration_min from athlete config (default 15, range 5-60).
+
+    Sessions shorter than this are excluded from strength counts — filters out
+    accidental short Strava 'Workout' entries (warm-ups, mobility, etc).
+    """
+    cfg = load_athlete_config()
+    val = cfg.get('strength_min_duration_min', default)
+    try:
+        val = int(val)
+    except (TypeError, ValueError):
+        return default
+    return max(5, min(60, val))
+
 # ============================================================================
 # STRENGTH ACTIVITY HELPERS
 # ============================================================================
@@ -484,8 +499,16 @@ def is_strength_activity(activity: Dict) -> bool:
     return t in STRENGTH_ACTIVITY_TYPES
 
 
+def qualifies_as_strength(activity: Dict, min_duration_min: int) -> bool:
+    """True if activity is a strength type AND meets the minimum duration."""
+    if not is_strength_activity(activity):
+        return False
+    duration_min = safe_float(activity.get('moving_time'), 0) / 60.0
+    return duration_min >= min_duration_min
+
+
 def summarize_strength(activities: List[Dict], target_per_week: int = 2,
-                       weeks: int = 4) -> Dict:
+                       weeks: int = 4, min_duration_min: Optional[int] = None) -> Dict:
     """Strength-session compliance summary.
 
     Tracked separately from running load — does NOT contribute to TSS, CTL,
@@ -493,7 +516,13 @@ def summarize_strength(activities: List[Dict], target_per_week: int = 2,
 
     Week boundaries mirror weekly_report.calculate_weeks: Monday-anchored UTC
     midnight, going backwards from current week.
+
+    Sessions shorter than `min_duration_min` are excluded (defaults to athlete
+    config value, then 15 min) — filters accidental short 'Workout' entries.
     """
+    if min_duration_min is None:
+        min_duration_min = get_strength_min_duration_min()
+
     now = datetime.now(timezone.utc)
     monday_midnight = now.replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(days=now.weekday())
 
@@ -509,7 +538,7 @@ def summarize_strength(activities: List[Dict], target_per_week: int = 2,
         count = 0
         ambiguous_count = 0
         for a in activities:
-            if not is_strength_activity(a):
+            if not qualifies_as_strength(a, min_duration_min):
                 continue
             try:
                 act_date = datetime.fromisoformat(a.get('start_date', '').replace('Z', '+00:00'))
@@ -542,6 +571,7 @@ def summarize_strength(activities: List[Dict], target_per_week: int = 2,
 
     return {
         'target_per_week': target_per_week,
+        'min_duration_min': min_duration_min,
         'this_week_count': this_week_count,
         'last_4w_count': total_sessions,
         'last_4w_ambiguous_count': total_ambiguous,

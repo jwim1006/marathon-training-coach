@@ -141,6 +141,12 @@ def cmd_set(args):
             return 1
         updates['strength_target_per_week'] = args.strength_target_per_week
 
+    if args.strength_min_duration_min is not None:
+        if not (5 <= args.strength_min_duration_min <= 60):
+            print(f"Error: strength_min_duration_min must be between 5 and 60, got {args.strength_min_duration_min}")
+            return 1
+        updates['strength_min_duration_min'] = args.strength_min_duration_min
+
     if not updates:
         print("Error: No fields to set. Provide at least one field.")
         return 1
@@ -201,6 +207,7 @@ def main():
     set_parser.add_argument('--race-prs', help='Race PRs as name=time pairs (e.g., "marathon=3:15:00,10k=42:30")')
     set_parser.add_argument('--injury-history', help='Injury history, comma-separated (e.g., "IT band 2024,shin splints 2023")')
     set_parser.add_argument('--strength-target-per-week', type=int, help='Target strength sessions per week (0-7, default 2)')
+    set_parser.add_argument('--strength-min-duration-min', type=int, help='Minimum minutes for a session to count as strength (5-60, default 15)')
 
     # get
     subparsers.add_parser('get', help='Show current athlete config')
