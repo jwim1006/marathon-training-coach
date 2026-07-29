@@ -9,10 +9,8 @@ import io
 import json
 import re
 import logging
-import urllib.request
 from datetime import datetime, timedelta, timezone, date
 from typing import Optional, Dict, List, Any
-from urllib.error import HTTPError, URLError
 
 # Load .env file if present (in deployment, real env vars are used)
 try:
@@ -32,9 +30,7 @@ def get_config_dir() -> str:
     return os.path.expanduser('~/.config/marathon-training-coach')
 
 CONFIG_DIR = get_config_dir()
-TOKEN_FILE = os.path.join(CONFIG_DIR, 'strava_tokens.json')
 MARATHONS_FILE = os.path.join(CONFIG_DIR, 'marathons.json')
-ACTIVITIES_CACHE_FILE = os.path.join(CONFIG_DIR, 'activities_cache.json')
 WORKOUT_NOTES_FILE = os.path.join(CONFIG_DIR, 'workout_notes.json')
 ATHLETE_CONFIG_FILE = os.path.join(CONFIG_DIR, 'athlete_config.json')
 
@@ -185,7 +181,9 @@ def setup_logging(name: str, log_file: str) -> logging.Logger:
     except (IOError, OSError) as e:
         print(f"Warning: Could not create log file: {e}", file=sys.stderr)
 
-    console_stream = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
+    # Log to stderr, never stdout: these scripts emit JSON on stdout for the agent
+    # to parse, and a log line interleaved with it corrupts the payload.
+    console_stream = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
     console_handler = logging.StreamHandler(console_stream)
     console_handler.setLevel(logging.INFO)
     console_handler.setFormatter(logging.Formatter('%(message)s'))
@@ -195,250 +193,41 @@ def setup_logging(name: str, log_file: str) -> logging.Logger:
     return logger
 
 # ============================================================================
-# STRAVA API
+# ACTIVITY DATA (provider-backed)
 # ============================================================================
+# Strava and Garmin live in strava_fetcher.py / garmin_fetcher.py, both built on
+# the ActivityProvider base (activity_provider.py) which owns caching and merging.
+# providers.py picks the active one and handles the Strava -> Garmin cutover.
+# Providers own their own credentials, so nothing is threaded through these calls.
 
-def validate_token_data(data: Dict) -> bool:
-    if not isinstance(data, dict):
-        return False
-    access_token = data.get('access_token')
-    if not isinstance(access_token, str) or len(access_token) < 10:
-        return False
-    return True
+def connect_provider(logger: logging.Logger) -> Optional[str]:
+    """Resolve and authenticate the active data provider.
+
+    Returns the provider's name ('strava' / 'garmin') for logging and messages, or
+    None when no provider can authenticate.
+    """
+    import providers
+    provider = providers.get_provider(logger)
+    return provider.name if provider else None
 
 
-def load_tokens(logger: logging.Logger) -> Optional[str]:
-    try:
-        with open(TOKEN_FILE, 'r') as f:
-            data = json.load(f)
-        if not validate_token_data(data):
-            logger.error("Invalid token data structure")
-            return None
-        access_token = data.get('access_token')
-        refresh_token = data.get('refresh_token')
-        expires_at = data.get('expires_at', 0)
-        if expires_at and expires_at < (datetime.now().timestamp() + 300):
-            logger.debug("Token expired, refreshing...")
-            if refresh_token:
-                return refresh_access_token(refresh_token, logger)
-            return None
-        return access_token
-    except FileNotFoundError:
-        logger.error("Token file not found. Run auth.py first.")
+def fetch_activities(logger: logging.Logger, days: int = 28) -> List[Dict]:
+    """Return the last `days` of activities, newest first, cache-first."""
+    import providers
+    provider = providers.get_provider(logger)
+    if not provider:
+        return []
+    return provider.fetch_activities(days=days)
+
+
+def fetch_activity_detail(activity_id: int,
+                          logger: logging.Logger) -> Optional[Dict]:
+    """Return one activity with laps, cached permanently."""
+    import providers
+    provider = providers.get_provider(logger)
+    if not provider:
         return None
-    except (json.JSONDecodeError, IOError, OSError) as e:
-        logger.error(f"Cannot read token file: {e}")
-        return None
-
-
-def refresh_access_token(refresh_token: str, logger: logging.Logger) -> Optional[str]:
-    import urllib.parse
-    client_id = os.environ.get('STRAVA_CLIENT_ID', '').strip()
-    client_secret = os.environ.get('STRAVA_CLIENT_SECRET', '').strip()
-    if not client_id or not client_secret:
-        logger.error("STRAVA_CLIENT_ID and STRAVA_CLIENT_SECRET required")
-        return None
-    url = 'https://www.strava.com/oauth/token'
-    data = {
-        'client_id': client_id,
-        'client_secret': client_secret,
-        'refresh_token': refresh_token,
-        'grant_type': 'refresh_token'
-    }
-    req = urllib.request.Request(
-        url,
-        data=urllib.parse.urlencode(data).encode(),
-        headers={'Content-Type': 'application/x-www-form-urlencoded'},
-        method='POST'
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=30) as response:
-            new_tokens = json.loads(response.read().decode())
-            if not validate_token_data(new_tokens):
-                logger.error("Invalid token response from server")
-                return None
-            with open(TOKEN_FILE, 'w') as f:
-                json.dump(new_tokens, f, indent=2)
-            os.chmod(TOKEN_FILE, 0o600)
-            logger.info("Token refreshed successfully")
-            return new_tokens.get('access_token')
-    except HTTPError as e:
-        if e.code == 401:
-            logger.error("Authentication failed - credentials may be invalid")
-        else:
-            logger.error(f"Token refresh failed: HTTP {e.code}")
-        return None
-    except (URLError, TimeoutError) as e:
-        logger.error(f"Network error during token refresh: {e}")
-        return None
-    except json.JSONDecodeError:
-        logger.error("Invalid response from token server")
-        return None
-
-
-def _load_activity_cache(logger: logging.Logger) -> List[Dict]:
-    """Load cached activities from disk"""
-    try:
-        with open(ACTIVITIES_CACHE_FILE, 'r') as f:
-            data = json.load(f)
-            if isinstance(data, list):
-                return data
-    except FileNotFoundError:
-        pass
-    except (json.JSONDecodeError, IOError) as e:
-        logger.debug(f"Cache read error (will rebuild): {e}")
-    return []
-
-
-def _save_activity_cache(activities: List[Dict], logger: logging.Logger):
-    """Save activities to cache, sorted newest first"""
-    activities.sort(key=lambda a: a.get('start_date', ''), reverse=True)
-    try:
-        with open(ACTIVITIES_CACHE_FILE, 'w') as f:
-            json.dump(activities, f, separators=(',', ':'))
-        os.chmod(ACTIVITIES_CACHE_FILE, 0o600)
-    except (IOError, OSError) as e:
-        logger.debug(f"Cache write error: {e}")
-
-
-def _fetch_from_api(access_token: str, logger: logging.Logger, after_ts: int) -> List[Dict]:
-    """Fetch activities from Strava API since a given timestamp"""
-    url = f'https://www.strava.com/api/v3/athlete/activities?after={after_ts}&per_page=200'
-    headers = {
-        'Authorization': f'Bearer {access_token}',
-        'User-Agent': 'TrainingCoach/2.0'
-    }
-    max_retries = 3
-    for attempt in range(max_retries):
-        try:
-            req = urllib.request.Request(url, headers=headers)
-            with urllib.request.urlopen(req, timeout=30) as response:
-                activities = json.loads(response.read().decode())
-                if not isinstance(activities, list):
-                    logger.error("Invalid API response format")
-                    return []
-                validated = []
-                for a in activities:
-                    if isinstance(a, dict) and re.match(r'^\d{4}-\d{2}-\d{2}T', a.get('start_date', '')):
-                        validated.append(a)
-                logger.debug(f"Fetched {len(validated)} new activities from API")
-                return validated
-        except HTTPError as e:
-            if e.code == 401:
-                logger.error("Authentication expired")
-                return []
-            logger.warning(f"HTTP error (attempt {attempt + 1}): {e.code}")
-            if attempt == max_retries - 1:
-                return []
-        except (URLError, TimeoutError) as e:
-            logger.error(f"Network error (attempt {attempt + 1}): {e}")
-            if attempt == max_retries - 1:
-                return []
-        except json.JSONDecodeError:
-            logger.error("Invalid JSON response from API")
-            return []
-    return []
-
-
-def fetch_activities(access_token: str, logger: logging.Logger, days: int = 28) -> List[Dict]:
-    """Fetch activities with local cache.
-    Loads cache, fetches only new activities since last cached entry (with 3-day overlap),
-    merges by activity ID, saves cache, and returns activities within the requested window."""
-    cached = _load_activity_cache(logger)
-
-    # Determine how far back to fetch from API
-    if cached:
-        # Find the most recent cached activity date, fetch from 3 days before that
-        latest_date = max(a.get('start_date', '') for a in cached)
-        try:
-            latest_dt = datetime.fromisoformat(latest_date.replace('Z', '+00:00'))
-            fetch_after = int((latest_dt - timedelta(days=3)).timestamp())
-        except (ValueError, TypeError):
-            fetch_after = int((datetime.now(timezone.utc) - timedelta(days=days)).timestamp())
-        logger.debug(f"Cache has {len(cached)} activities, fetching new since {latest_date[:10]}")
-    else:
-        # No cache — fetch the full requested range
-        fetch_after = int((datetime.now(timezone.utc) - timedelta(days=days)).timestamp())
-        logger.debug(f"No cache, fetching last {days} days")
-
-    # Fetch new activities from API
-    new_activities = _fetch_from_api(access_token, logger, fetch_after)
-
-    # Merge: deduplicate by activity ID
-    by_id = {}
-    for a in cached:
-        aid = a.get('id')
-        if aid:
-            by_id[aid] = a
-    for a in new_activities:
-        aid = a.get('id')
-        if aid:
-            by_id[aid] = a  # new data overwrites cached (in case activity was edited)
-
-    all_activities = list(by_id.values())
-
-    # Save merged cache
-    _save_activity_cache(all_activities, logger)
-
-    # Filter to requested time window
-    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
-    filtered = []
-    for a in all_activities:
-        try:
-            act_date = datetime.fromisoformat(a.get('start_date', '').replace('Z', '+00:00'))
-            if act_date > cutoff:
-                filtered.append(a)
-        except (ValueError, TypeError):
-            continue
-
-    filtered.sort(key=lambda a: a.get('start_date', ''), reverse=True)
-    logger.debug(f"Returning {len(filtered)} activities (cache: {len(all_activities)} total)")
-    return filtered
-
-
-ACTIVITY_DETAIL_CACHE_FILE = os.path.join(CONFIG_DIR, 'activity_details_cache.json')
-
-
-def fetch_activity_detail(access_token: str, activity_id: int, logger: logging.Logger) -> Optional[Dict]:
-    """Fetch full activity detail (including laps) with permanent caching.
-    Activity data is immutable once recorded, so cache has no TTL."""
-    # Load cache
-    cache = {}
-    try:
-        with open(ACTIVITY_DETAIL_CACHE_FILE, 'r') as f:
-            cache = json.load(f)
-    except (FileNotFoundError, json.JSONDecodeError):
-        pass
-
-    key = str(activity_id)
-    if key in cache:
-        logger.debug(f"Detail cache hit for {activity_id}")
-        return cache[key]
-
-    url = f'https://www.strava.com/api/v3/activities/{activity_id}'
-    headers = {
-        'Authorization': f'Bearer {access_token}',
-        'User-Agent': 'TrainingCoach/2.0',
-    }
-    req = urllib.request.Request(url, headers=headers)
-    try:
-        with urllib.request.urlopen(req, timeout=30) as response:
-            data = json.loads(response.read().decode('utf-8'))
-        cache[key] = data
-        try:
-            with open(ACTIVITY_DETAIL_CACHE_FILE, 'w') as f:
-                json.dump(cache, f, separators=(',', ':'))
-            os.chmod(ACTIVITY_DETAIL_CACHE_FILE, 0o600)
-        except (IOError, OSError) as e:
-            logger.debug(f"Detail cache write error: {e}")
-        return data
-    except HTTPError as e:
-        logger.error(f"HTTP {e.code} fetching activity {activity_id}")
-    except (URLError, TimeoutError) as e:
-        logger.error(f"Network error fetching activity {activity_id}: {e}")
-    except json.JSONDecodeError:
-        logger.error(f"Invalid JSON for activity {activity_id}")
-    return None
+    return provider.fetch_activity_detail(activity_id)
 
 
 # ============================================================================

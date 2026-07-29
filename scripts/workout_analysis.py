@@ -25,7 +25,7 @@ from utils import (
     CONFIG_DIR, VT1_HR,
     get_hr_zone, format_pace, safe_float, safe_int,
     setup_logging,
-    load_tokens, fetch_activities, fetch_activity_detail,
+    connect_provider, fetch_activities, fetch_activity_detail,
 )
 
 logger = setup_logging('workout_analysis', os.path.join(CONFIG_DIR, 'workout_analysis.log'))
@@ -318,15 +318,15 @@ def main() -> int:
                         help='Pick the most recent activity of this type')
     args = parser.parse_args()
 
-    access_token = load_tokens(logger)
-    if not access_token:
-        print(json.dumps({'error': 'No Strava tokens. Run auth.py first.'}))
+    if not connect_provider(logger):
+        print(json.dumps({'error': 'No data provider available. Run auth.py (Strava) '
+                                   'or set GARMIN_EMAIL/GARMIN_PASSWORD (Garmin).'}))
         return 1
 
     if args.activity_id:
         activity_id = args.activity_id
     else:
-        activities = fetch_activities(access_token, logger, days=28)
+        activities = fetch_activities(logger, days=28)
         picked = pick_activity(activities, args.type)
         if not picked:
             label = args.type or 'run'
@@ -334,7 +334,7 @@ def main() -> int:
             return 0
         activity_id = picked.get('id')
 
-    detail = fetch_activity_detail(access_token, activity_id, logger)
+    detail = fetch_activity_detail(activity_id, logger)
     if not detail:
         print(json.dumps({'error': f'Could not fetch activity {activity_id}.'}))
         return 1

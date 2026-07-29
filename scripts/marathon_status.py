@@ -20,7 +20,7 @@ from utils import (
     CONFIG_DIR, setup_logging,
     get_hr_zone, is_easy_hr, safe_float, safe_int,
     format_pace, format_duration,
-    load_tokens, fetch_activities,
+    connect_provider, fetch_activities,
     load_marathons, get_next_marathon, find_marathon,
     get_training_phase, get_plan_week, PHASES,
     summarize_strength, get_strength_target_per_week,
@@ -655,10 +655,10 @@ def main() -> int:
             logger.error("No upcoming marathons found.")
             return 1
 
-    # Load Strava data
-    access_token = load_tokens(logger)
-    if not access_token:
-        logger.error("No Strava tokens. Run: python scripts/auth.py")
+    # Connect to the active data provider (Strava or Garmin)
+    if not connect_provider(logger):
+        logger.error("No data provider available. Run: python scripts/auth.py "
+                     "(Strava) or set GARMIN_EMAIL/GARMIN_PASSWORD (Garmin)")
         return 1
 
     # Calculate how many days of activities to fetch
@@ -673,7 +673,7 @@ def main() -> int:
     else:
         fetch_days = 120
 
-    activities = fetch_activities(access_token, logger, days=fetch_days)
+    activities = fetch_activities(logger, days=fetch_days)
     if not activities:
         logger.info("No recent activities found.")
 
