@@ -15,7 +15,7 @@ from utils import (
     safe_float, safe_int,
     get_hr_zone, is_easy_hr,
     setup_logging,
-    load_tokens, fetch_activities,
+    connect_provider, fetch_activities,
     get_marathon_report_info,
     summarize_strength, get_strength_target_per_week,
 )
@@ -151,12 +151,12 @@ def generate_report(activities: List[Dict]) -> Dict:
 # ============================================================================
 
 def main() -> int:
-    access_token = load_tokens(logger)
-    if not access_token:
-        print(json.dumps({'error': 'No Strava tokens. Run auth.py first.'}))
+    if not connect_provider(logger):
+        print(json.dumps({'error': 'No data provider available. Run auth.py (Strava) '
+                                   'or set GARMIN_EMAIL/GARMIN_PASSWORD (Garmin).'}))
         return 1
 
-    activities = fetch_activities(access_token, logger, days=28)
+    activities = fetch_activities(logger, days=28)
     if not activities:
         print(json.dumps({'error': 'No activities found.'}))
         return 0

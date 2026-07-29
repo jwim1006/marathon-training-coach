@@ -1,0 +1,6 @@
+# Data providers. Strava is the default; set DATA_PROVIDER=garmin to switch.
+# Pin versions — these hold credentials at runtime, so don't `pip install -U` blindly.
+garminconnect==0.3.7
+curl_cffi==0.15.0   # garminconnect TLS-fingerprint backend
+cffi==2.1.0         # curl_cffi native bridge
+python-dotenv==1.2.2
