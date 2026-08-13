@@ -14,6 +14,7 @@ Account safety — the reason this class is careful:
 """
 
 import os
+import sys
 import logging
 from datetime import datetime
 from typing import Optional, Dict, List, Any
@@ -75,6 +76,31 @@ class GarminProvider(ActivityProvider):
             self._connect()
         return self._client
 
+    def _persist_tokens(self, client) -> None:
+        """Save OAuth tokens so the next run skips the SSO password endpoint."""
+        try:
+            os.makedirs(TOKEN_DIR, mode=0o700, exist_ok=True)
+            client.client.dump(TOKEN_DIR)
+        except Exception as e:
+            self.logger.debug("Could not persist Garmin tokens: %s", e)
+
+    def _mfa_prompt(self) -> str:
+        """Supply an MFA code without assuming a terminal is attached.
+
+        Prefers GARMIN_MFA_CODE (settable on a server for a one-off re-auth) and
+        only falls back to an interactive prompt when stdin is really a TTY.
+        On a headless box this raises instead of blocking a scheduled job forever.
+        """
+        code = os.environ.get('GARMIN_MFA_CODE', '').strip()
+        if code:
+            return code
+        if sys.stdin is not None and sys.stdin.isatty():
+            return input("Garmin MFA code: ")
+        raise RuntimeError(
+            "Garmin requires an MFA code but no TTY is available. Re-authenticate "
+            "interactively and copy the refreshed token file to this host, or set "
+            "GARMIN_MFA_CODE for a one-off login.")
+
     def _connect(self) -> None:
         """Log in, preferring cached tokens over the password endpoint."""
         try:
@@ -88,7 +114,7 @@ class GarminProvider(ActivityProvider):
         has_creds = bool(email and password)
         client = Garmin(
             email, password,
-            prompt_mfa=(lambda: input("Garmin MFA code: ")) if has_creds else None,
+            prompt_mfa=self._mfa_prompt if has_creds else None,
         )
 
         # Tokenstore login: loads cached tokens and refreshes the DI token; only
@@ -100,11 +126,11 @@ class GarminProvider(ActivityProvider):
                 raise
             self.logger.info("Cached Garmin tokens unavailable (%s); fresh login.", e)
             client.login()
-            try:
-                client.client.dump(TOKEN_DIR)  # persist so next run skips SSO
-            except Exception as dump_err:
-                self.logger.debug("Could not persist Garmin tokens: %s", dump_err)
 
+        # Always persist: login() may have refreshed the DI token in the
+        # background, and an unsaved refresh means the next run re-authenticates
+        # against the SSO endpoint (which gets the IP rate limited).
+        self._persist_tokens(client)
         self._client = client
         self.logger.debug("Garmin client ready (tokenstore=%s)", TOKEN_DIR)
 
