@@ -220,6 +220,21 @@ def fetch_activities(logger: logging.Logger, days: int = 28) -> List[Dict]:
     return provider.fetch_activities(days=days)
 
 
+def cached_activity_detail(activity_id: int,
+                           logger: logging.Logger) -> Optional[Dict]:
+    """Return an activity from any provider's permanent detail cache, without signing in.
+
+    Recorded activities never change, so a cache hit means no login and no API call.
+    """
+    import providers
+    for cls in providers.PROVIDER_CHAIN:
+        detail = cls(logger)._load_details_cache().get(str(activity_id))
+        if detail:
+            logger.debug("Detail cache hit for %s (%s), no sign-in needed", activity_id, cls.name)
+            return detail
+    return None
+
+
 def fetch_activity_detail(activity_id: int,
                           logger: logging.Logger) -> Optional[Dict]:
     """Return one activity with laps, cached permanently."""
