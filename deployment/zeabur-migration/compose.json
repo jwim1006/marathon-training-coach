@@ -1,0 +1,36 @@
+{
+  "name": "personal-bots",
+  "services": {
+    "openclaw": {
+      "build": {
+        "context": ".",
+        "args": {"OPENCLAW_BASE_IMAGE": "${OPENCLAW_BASE_IMAGE:?Set the exported OpenClaw image in runtime.env}"}
+      },
+      "image": "local/marathon-coach:migration",
+      "init": true,
+      "restart": "unless-stopped",
+      "user": "1000:1000",
+      "env_file": [{"path": "./secrets/openclaw.env", "format": "raw"}],
+      "environment": {
+        "HOME": "/home/node",
+        "XDG_CONFIG_HOME": "/home/node/.config",
+        "OPENCLAW_STATE_DIR": "/home/node/.openclaw",
+        "OPENCLAW_WORKSPACE_DIR": "/home/node/.openclaw/workspace",
+        "TZ": "Europe/London"
+      },
+      "volumes": [{"type": "bind", "source": "./runtime/home", "target": "/home/node", "bind": {"create_host_path": false}}],
+      "ports": ["127.0.0.1:18789:18789"],
+      "command": ["node", "/app/openclaw.mjs", "gateway", "--bind", "lan", "--port", "18789"],
+      "stop_grace_period": "45s",
+      "logging": {"driver": "json-file", "options": {"max-size": "10m", "max-file": "3"}}
+    },
+    "portfolio": {
+      "profiles": ["cutover"],
+      "image": "${PORTFOLIO_IMAGE:?Set the exported portfolio image in runtime.env}",
+      "init": true,
+      "restart": "unless-stopped",
+      "env_file": [{"path": "./secrets/portfolio.env", "format": "raw"}],
+      "logging": {"driver": "json-file", "options": {"max-size": "10m", "max-file": "3"}}
+    }
+  }
+}

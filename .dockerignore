@@ -1,0 +1,11 @@
+# Allowlist: only what deployment/coach/Dockerfile copies. Keeps .env, .venv and
+# .migration-private (credentials, personal data) out of the build context.
+*
+!CLAUDE.md
+!SKILL.md
+!requirements.txt
+!scripts/
+!references/
+!deployment/coach/coach_bot.py
+!deployment/coach/sync_data.py
+**/__pycache__
