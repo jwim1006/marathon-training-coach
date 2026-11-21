@@ -1,0 +1,70 @@
+# Test, then deploy the coach bot to the VPS on every push to main.
+#
+# The coach image is built on the VPS, not in GHCR: this job sends a tar of the build
+# files over SSH, and the VPS key is pinned to /usr/local/sbin/deploy_coach.sh
+# (personal-infra/scripts/deploy_coach.sh). That script checks the files, backs up the
+# live copy, installs them in /opt/marathon-coach and rebuilds. It refuses a push that
+# changes deployment/coach/compose.yaml; those are applied on the VPS by hand.
+#
+# Repo secrets (set by the repo owner): VPS_HOST, VPS_KNOWN_HOSTS, COACH_DEPLOY_KEY.
+# Without them the deploy job is skipped and only the tests run.
+name: deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python -m compileall -q scripts deployment/coach
+      - run: python -m unittest discover -s deployment/coach -p "test_*.py"
+
+  deploy:
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check deploy secrets
+        id: secrets
+        env:
+          HAS_KEY: ${{ secrets.COACH_DEPLOY_KEY != '' && secrets.VPS_HOST != '' && secrets.VPS_KNOWN_HOSTS != '' }}
+        run: |
+          echo "ready=$HAS_KEY" >> "$GITHUB_OUTPUT"
+          [ "$HAS_KEY" = true ] || echo "::notice::Deploy secrets not set; skipping deploy."
+
+      - name: Bundle the build files
+        if: steps.secrets.outputs.ready == 'true'
+        run: |
+          git ls-files -z CLAUDE.md SKILL.md requirements.txt scripts references deployment/coach \
+            | tar --null --no-recursion -cf "$RUNNER_TEMP/bundle.tar" -T -
+          tar -tf "$RUNNER_TEMP/bundle.tar" | wc -l
+
+      - name: Deploy to the VPS
+        if: steps.secrets.outputs.ready == 'true'
+        env:
+          SSH_KEY: ${{ secrets.COACH_DEPLOY_KEY }}
+          KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+        run: |
+          install -m 600 /dev/null "$RUNNER_TEMP/key"
+          printf '%s\n' "$SSH_KEY" > "$RUNNER_TEMP/key"
+          printf '%s\n' "$KNOWN_HOSTS" > "$RUNNER_TEMP/known_hosts"
+          ssh -i "$RUNNER_TEMP/key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
+              -o UserKnownHostsFile="$RUNNER_TEMP/known_hosts" \
+              "deploy@$VPS_HOST" "deploy-coach $GITHUB_SHA" < "$RUNNER_TEMP/bundle.tar"

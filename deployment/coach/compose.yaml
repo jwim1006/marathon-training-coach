@@ -1,0 +1,66 @@
+# Same file on this PC (Docker Desktop) and on a VPS. Run from this directory:
+#   docker compose --profile seed run --rm seed   copy the bundle into the volumes (once)
+#   docker compose up -d --build                  coach only
+#   docker compose --profile portfolio up -d      coach + portfolio bot
+# COACH_BUNDLE points at the private bundle made by prepare.py (never commit it).
+# Data lives in named volumes, not bind mounts: the scripts chmod their files to 0600,
+# which Docker Desktop's Windows bind mounts reject.
+name: marathon-coach
+
+services:
+  coach:
+    build:
+      context: ../..
+      dockerfile: deployment/coach/Dockerfile
+    image: local/marathon-coach:latest
+    restart: unless-stopped
+    env_file:
+      - path: ${COACH_BUNDLE:-../../.migration-private/coach}/coach.env
+        format: raw
+    environment:
+      TZ: Europe/London
+    volumes:
+      - coach-data:/home/coach/.config/marathon-training-coach
+      - claude-home:/home/coach/.claude
+    # No ports: Telegram long-polling is outbound only.
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}
+
+  seed:
+    profiles: [seed]
+    image: local/marathon-coach:latest
+    user: "1000:1000"
+    volumes:
+      - ${COACH_BUNDLE:-../../.migration-private/coach}/data:/bundle:ro
+      - coach-data:/home/coach/.config/marathon-training-coach
+    # Refuses to overwrite: an existing volume may hold newer data than the bundle.
+    entrypoint: ["sh", "-c", "test ! -e /home/coach/.config/marathon-training-coach/athlete_config.json || { echo 'coach-data already seeded; remove the volume first' >&2; exit 1; }; cp -R /bundle/. /home/coach/.config/marathon-training-coach/ && chmod -R go-rwx /home/coach/.config/marathon-training-coach && echo seeded"]
+
+  # Cutover: merge a fresh Zeabur bundle into the live volume (dry run unless given --apply).
+  #   SYNC_FROM=../../.migration-private/coach-final docker compose --profile sync run --rm sync [--apply]
+  sync:
+    profiles: [sync]
+    image: local/marathon-coach:latest
+    user: "1000:1000"
+    volumes:
+      - ${COACH_BUNDLE:-../../.migration-private/coach}/data:/base:ro
+      - ${SYNC_FROM:-./SYNC_FROM-not-set}/data:/incoming:ro
+      - coach-data:/home/coach/.config/marathon-training-coach
+    entrypoint: ["python3", "/app/deployment/coach/sync_data.py", "/base", "/incoming", "/home/coach/.config/marathon-training-coach"]
+
+  portfolio:
+    profiles: [portfolio]
+    image: ${PORTFOLIO_IMAGE:-ghcr.io/treebearjason/portfolio-bot:latest}
+    restart: unless-stopped
+    env_file:
+      - path: ${COACH_BUNDLE:-../../.migration-private/coach}/portfolio.env
+        format: raw
+        required: false
+    logging:
+      driver: json-file
+      options: {max-size: 10m, max-file: "3"}
+
+volumes:
+  coach-data:
+  claude-home:
